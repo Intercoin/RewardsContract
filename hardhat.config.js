@@ -1,10 +1,10 @@
 require('dotenv').config()
 
 require("@nomiclabs/hardhat-ethers")
-require("hardhat-docgen")
-require("@hardhat-docgen/core")
-//require("@hardhat-docgen/markdown")
-require("./docgen-custom-markdown")
+// require("hardhat-docgen")
+// require("@hardhat-docgen/core")
+// //require("@hardhat-docgen/markdown")
+// require("./docgen-custom-markdown")
 require('hardhat-deploy')
 require("@nomiclabs/hardhat-waffle")
 require("@nomiclabs/hardhat-web3")
@@ -15,8 +15,7 @@ require("hardhat-gas-reporter")
 
 const kovanURL = `https://eth-kovan.alchemyapi.io/v2/${process.env.ALCHEMY_KOVAN}`
 const goerliURL = `https://eth-goerli.alchemyapi.io/v2/${process.env.ALCHEMY_GOERLI}`
-const rinkebyURL = `https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_RINKEBY}`
-//const rinkebyURL = `https://rinkeby.infura.io/v3/${process.env.INFURA_ID_PROJECT}`
+const rinkebyURL = /*`https://rinkeby.infura.io/v3/${process.env.INFURA_ID_PROJECT}` */`https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_RINKEBY}`
 const bscURL = 'https://bsc-dataseed.binance.org' //`https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_RINKEBY}`
 const bsctestURL = 'https://data-seed-prebsc-1-s1.binance.org:8545';
 const mainnetURL = `https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_MAINNET}`
@@ -84,13 +83,17 @@ module.exports = {
       saveDeployments: true
     }
   },
-  // docgen: {
-  //   path: './docs',
-  //   clear: true,
-  //   only: ['contracts/v2'],
-  //   theme: '../../docgen-custom-markdown',
-  //   runOnCompile: false,
-  // },
+  docgen: {
+    path: './docs',
+    clear: true,
+    only: ['contracts/v2'],
+    theme: '../../docgen-custom-markdown',
+    runOnCompile: false,
+  },
+  gasReporter: {
+    enabled: process.env.REPORT_GAS !== undefined,
+    currency: "USD"
+  },
   etherscan: {
     apiKey: process.env.MATIC_API_KEY
     //apiKey: process.env.ETHERSCAN_API_KEY
@@ -99,7 +102,7 @@ module.exports = {
   solidity: {
     compilers: [
         {
-          version: "0.8.11",
+          version: "0.8.13",
           settings: {
             optimizer: {
               enabled: true,
@@ -112,23 +115,7 @@ module.exports = {
               bytecodeHash: "none",
             },
           },
-        },
-        {
-          version: "0.6.7",
-          settings: {},
-          settings: {
-            optimizer: {
-              enabled: false,
-              runs: 50,
-            },
-            metadata: {
-              // do not include the metadata hash, since this is machine dependent
-              // and we want all generated code to be deterministic
-              // https://docs.soliditylang.org/en/v0.7.6/metadata.html
-              bytecodeHash: "none",
-            },
-          },
-        },
+        }
       ],
   
     
