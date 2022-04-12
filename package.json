@@ -1,0 +1,34 @@
+{
+  "name": "rewardscontract",
+  "version": "1.0.0",
+  "description": "Giving people rewards for certain actions",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Intercoin/RewardsContract.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Intercoin/RewardsContract/issues"
+  },
+  "homepage": "https://github.com/Intercoin/RewardsContract#readme",
+  "dependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.5",
+    "@nomiclabs/hardhat-etherscan": "^3.0.3",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "@nomiclabs/hardhat-web3": "^2.0.0",
+    "@openzeppelin/contracts": "^4.5.0",
+    "@openzeppelin/contracts-upgradeable": "^4.5.2",
+    "@openzeppelin/test-helpers": "^0.5.15",
+    "dotenv": "^16.0.0",
+    "hardhat": "^2.9.3",
+    "hardhat-deploy": "^0.11.4",
+    "hardhat-gas-reporter": "^1.0.8",
+    "npm-check-updates": "^12.5.8",
+    "solidity-coverage": "^0.7.20"
+  }
+}
