@@ -1,0 +1,4 @@
+[submodule "submodules/NonFungibleTokenContract"]
+	path = submodules/NonFungibleTokenContract
+	url = https://github.com/Intercoin/NonFungibleTokenContract.git
+	branch = main_hardhat
