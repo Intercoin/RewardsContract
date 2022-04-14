@@ -2,3 +2,6 @@
 	path = submodules/NonFungibleTokenContract
 	url = https://github.com/Intercoin/NonFungibleTokenContract.git
 	branch = main_hardhat
+[submodule "submodules/CommunityContract"]
+	path = submodules/CommunityContract
+	url = https://github.com/Intercoin/CommunityContract.git
