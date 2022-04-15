@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 
 contract ITRx is ERC777, AccessControlEnumerable {
     uint256 public immutable maxTotalSupply;
-    bytes32 internal constant WHITELIST = keccak256("WHITELIST");
+    bytes32 public constant WHITELIST = keccak256("WHITELIST");
     
     /**
      * @dev Mints `initialSupply` amount of token and transfers them to `owner`.

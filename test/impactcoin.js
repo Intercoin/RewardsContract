@@ -59,9 +59,12 @@ describe("ImpactCoin", function () {
   });
   it("no one should mint the token other than the owner", async() => {
     const amountToMint = ONE.mul(TEN.pow(BigNumber.from('18')));
+    
     await expect(
       impactCoin.connect(alice).mint(alice.address, amountToMint)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith(
+      'AccessControl: account '+alice.address.toLowerCase()+' is missing role '+ethers.utils.keccak256(ethers.utils.toUtf8Bytes("REWARD_ROLE"))
+      );
   });
 
 
