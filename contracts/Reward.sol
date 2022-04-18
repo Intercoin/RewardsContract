@@ -10,6 +10,8 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "./interfaces/IReward.sol";
 
+import "hardhat/console.sol";
+
 contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
 
     bytes32 internal constant BONUS_CALLER = keccak256("BONUS_CALLER");
@@ -23,7 +25,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         Community addr;
     }
     struct NFTSettings {
-        NFT token;
+        address token;
         address currency;
         uint64 seriesId;
         uint256 price;
@@ -73,7 +75,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         internal
         onlyInitializing 
     {
-        settings.nft.token = NFT(nftSettings.token);
+        settings.nft.token = nftSettings.token;
         settings.nft.currency = nftSettings.currency;
         settings.nft.seriesId = nftSettings.seriesId;
         settings.nft.price = nftSettings.price;
@@ -108,26 +110,48 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         uint256 amount
     ) 
         external 
+        payable
         returns(uint256 extraTokenAmount) 
     {
         
         require(hasRole(BONUS_CALLER, _msgSender()), "DISABLED");
 
-        try settings.impactCoin.mint(
-            account, amount
-        )
-        {
-            // if error is not thrown, we are fine
-        } catch Error(string memory reason) {
-            // This is executed in case revert() was called with a reason
-            revert(reason);
-        } catch {
-            revert("Errors while mintint ICoin");
-        }
+        // try settings.impactCoin.mint(
+        //     account, amount
+        // )
+        // {
+        //     // if error is not thrown, we are fine
+        // } catch Error(string memory reason) {
+        //     // This is executed in case revert() was called with a reason
+        //     revert(reason);
+        // } catch {
+        //     revert("Errors while minting ICoin");
+        // }
         /////////////////////
-/*
+
         if (settings.nft.currency == address(0)) {
-            try settings.nft.token.buyAuto(
+console.log(settings.nft.token);
+console.log("settings.nft.token");
+console.log("try NFT(settings.nft.token).buyAuto{value:msg.value}");
+console.log(msg.value);
+            try NFT(settings.nft.token).buyAuto{value:msg.value, gas:8000000}(
+                settings.nft.seriesId,  //uint64 seriesId, 
+                settings.nft.price,     //uint256 price, 
+                true,                   // bool safe, 
+                0,                      //uint256 hookCount
+                account                 // address buyFor
+            )
+            {
+                // if error is not thrown, we are fine
+            } catch Error(string memory reason) {
+                // This is executed in case revert() was called with a reason
+                revert(reason);
+            } catch {
+                revert("Errors while minting NFT");
+            }
+        } else {
+            
+            try NFT(settings.nft.token).buyAuto(
                 settings.nft.seriesId,  //uint64 seriesId, 
                 settings.nft.currency,  //address currency, 
                 settings.nft.price,     //uint256 price, 
@@ -141,30 +165,13 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
                 // This is executed in case revert() was called with a reason
                 revert(reason);
             } catch {
-                revert("Errors while mintint ICoin");
-            }
-        } else {
-            
-            try settings.nft.token.buyAuto(
-                settings.nft.seriesId,  //uint64 seriesId, 
-                settings.nft.price,     //uint256 price, 
-                true,                   // bool safe, 
-                0,                      //uint256 hookCount
-                account                 // address buyFor
-            )
-            {
-                // if error is not thrown, we are fine
-            } catch Error(string memory reason) {
-                // This is executed in case revert() was called with a reason
-                revert(reason);
-            } catch {
-                revert("Errors while mintint ICoin");
+                revert("Errors while minting NFT");
             }
         
         }
 
         //////////////////
-
+/*
         uint256 amountWas = impactCoinCounter[account].amount;
         uint256 amountCurrent = amountWas + amount;
         uint256 amountNearToCurrent = type(uint256).max;
@@ -207,8 +214,8 @@ _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, s
             
 
         }
+*/
 
-*/        
     }
 
     function _changeCommunityRole(address account, string memory from, string memory to) internal {

@@ -2,12 +2,15 @@
 pragma solidity ^0.8.11;
 
 import "../interfaces/IReward.sol";
+import "hardhat/console.sol";
 
 contract MockBonusCaller {
-    function bonusCall(address caller, address account, uint256 amount) public {
-        
-        try IReward(caller).bonus(
-            account, amount
+    function bonusCall(address caller, address account, uint256 amount) public payable {
+console.log("bonusCall");
+console.log("msg.value=",msg.value);
+console.log("gasleft()=",gasleft());
+        try IReward(caller).bonus{value: msg.value}(
+            account, amount//, 
         )
         returns(uint256)
         {
@@ -16,7 +19,7 @@ contract MockBonusCaller {
             // This is executed in case revert() was called with a reason
             revert(reason);
         } catch {
-            revert("Errors while callin bonus method");
+            revert("Errors while calling bonus method");
         }
     }
 }
