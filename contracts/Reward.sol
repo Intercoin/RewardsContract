@@ -8,11 +8,13 @@ import "../submodules/CommunityContract/contracts/Community.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+//import "@openzeppelin/contracts-upgradeable/token/ERC777/IERC777RecipientUpgradeable.sol";
+
 import "./interfaces/IReward.sol";
 
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
-contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
+contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward/*, IERC777RecipientUpgradeable*/ {
 
     bytes32 internal constant BONUS_CALLER = keccak256("BONUS_CALLER");
     
@@ -45,6 +47,11 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         uint256 amount;
     }
     mapping(address => ImpactCounter) impactCoinCounter;
+
+    
+    receive() external payable {
+
+    }
 // /*
 // so make constructor and set params:
 // address of ImpactCoin (see Impact Coin #3 )
@@ -95,6 +102,17 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
     }
 
+    function tokensReceived(
+        address operator,
+        address from,
+        address to,
+        uint256 amount,
+        bytes calldata userData,
+        bytes calldata operatorData
+    ) external {
+
+    }
+
 // mint amount of ImpactCoin to account
 // mint NFT to account with series seriesId
 // calculate total ImpactCoin granted to account and move account to the appropriate role. Remember that user's role would be the one at the moment from this set.
@@ -113,28 +131,25 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         payable
         returns(uint256 extraTokenAmount) 
     {
-        
+
         require(hasRole(BONUS_CALLER, _msgSender()), "DISABLED");
 
-        // try settings.impactCoin.mint(
-        //     account, amount
-        // )
-        // {
-        //     // if error is not thrown, we are fine
-        // } catch Error(string memory reason) {
-        //     // This is executed in case revert() was called with a reason
-        //     revert(reason);
-        // } catch {
-        //     revert("Errors while minting ICoin");
-        // }
-        /////////////////////
+        try settings.impactCoin.mint(
+            account, amount
+        )
+        {
+            // if error is not thrown, we are fine
+        } catch Error(string memory reason) {
+            // This is executed in case revert() was called with a reason
+            revert(reason);
+        } catch {
+            revert("Errors while minting ICoin");
+        }
+        ///////////////////
 
         if (settings.nft.currency == address(0)) {
-console.log(settings.nft.token);
-console.log("settings.nft.token");
-console.log("try NFT(settings.nft.token).buyAuto{value:msg.value}");
-console.log(msg.value);
-            try NFT(settings.nft.token).buyAuto{value:msg.value, gas:8000000}(
+
+            try NFT(settings.nft.token).buyAuto{value:msg.value}(
                 settings.nft.seriesId,  //uint64 seriesId, 
                 settings.nft.price,     //uint256 price, 
                 true,                   // bool safe, 
@@ -171,9 +186,10 @@ console.log(msg.value);
         }
 
         //////////////////
-/*
+
         uint256 amountWas = impactCoinCounter[account].amount;
         uint256 amountCurrent = amountWas + amount;
+        
         uint256 amountNearToCurrent = type(uint256).max;
         uint256 j;
         for(uint256 i = 0; i < settings.community.roles.length; i++) {
@@ -190,31 +206,15 @@ console.log(msg.value);
             // so changed 
             // it can be next item,  or roles was changed and here is new item of new list
             
-_changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[j].rolename);
-            // // can be just renamed role and grap cap left the same
-            // if (amountNearToCurrent == impactCoinCounter[account].currentRole.growcap) {
-            //     if (!compareStrings(impactCoinCounter[account].currentRole.rolename, settings.community.roles[j].rolename)) {
-                    
-            //     // // change role from 
-            //     // impactCoinCounter[account].currentRole.rolename
-            //     // // to
-            //     // settings.community.roles[j].rolename
-            //     // // and update
-            //     // impactCoinCounter[account].currentRole
-
-            //     }
-            // } else {
-
-            // }
-
-
+            _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[j].rolename);
+            
             impactCoinCounter[account].currentRole.rolename = settings.community.roles[j].rolename;
             impactCoinCounter[account].currentRole.growcap = settings.community.roles[j].growcap;
-
+            impactCoinCounter[account].amount = amountCurrent;
             
 
         }
-*/
+
 
     }
 
