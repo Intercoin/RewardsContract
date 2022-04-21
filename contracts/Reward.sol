@@ -33,13 +33,13 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         uint256 price;
     }
 
-    struct Settigns {
+    struct Settings {
         ImpactCoin impactCoin;
         CommunitySettings community;
         NFTSettings nft;
     }
 
-    Settigns settings;
+    Settings internal settings;
 
 
     struct ImpactCounter {
@@ -48,7 +48,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
     mapping(address => ImpactCounter) impactCoinCounter;
 
-    
     receive() external payable {
 
     }
@@ -61,6 +60,36 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 // tuple of arrays(or two arrays) (string, uint256)[]
 // like [("Role-100", 100),("Role-200", 200),("Role-500", 500),("Role-800", 800)]
 // */
+
+
+    function viewSettings()public view returns(Settings memory) {
+        return settings;
+    }
+    
+    function updateNftSettings(
+        address currency,
+        uint64 seriesId,
+        uint256 price
+    ) 
+        public 
+        onlyOwner 
+    {
+        settings.nft.currency = currency;
+        settings.nft.seriesId = seriesId;
+        settings.nft.price = price;
+    }
+
+    function updateCommunitySettings(
+        CommunityRoles[] memory roles
+    ) 
+        public 
+        onlyOwner 
+    {
+        delete settings.community.roles;
+        for(uint256 i = 0; i < roles.length; i++) {
+            settings.community.roles.push(CommunityRoles(roles[i].rolename, roles[i].growcap));
+        }
+    }
 
     function init(
         address impactCoinAddress,
@@ -192,6 +221,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         
         uint256 amountNearToCurrent = type(uint256).max;
         uint256 j;
+
+        uint256 indexMax = 0;
         for(uint256 i = 0; i < settings.community.roles.length; i++) {
             if (
                 amountCurrent <= settings.community.roles[i].growcap &&
@@ -200,19 +231,32 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
                 amountNearToCurrent = settings.community.roles[i].growcap;
                 j = i;
             }
+
+            if (settings.community.roles[indexMax].growcap <= settings.community.roles[i].growcap) {
+                indexMax = i;
+            }
+
         }
 
+        // if role changed by grow up usercap  OR roles can be changed by owner and any donation should recalculated(custom case when cap the same but role are different)
+        bool needToUpdate = false;
+        uint256 indexToUpdate = 0;
+
         if (type(uint256).max != amountNearToCurrent) {
-            // so changed 
-            // it can be next item,  or roles was changed and here is new item of new list
+            indexToUpdate = j;
+            needToUpdate = true;
+        } else if (compareStrings(impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexMax].rolename) == false) {
+            indexToUpdate = indexMax;
+            needToUpdate = true;
+        }
+
+        if (needToUpdate) {
+            _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexToUpdate].rolename);
             
-            _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[j].rolename);
-            
-            impactCoinCounter[account].currentRole.rolename = settings.community.roles[j].rolename;
-            impactCoinCounter[account].currentRole.growcap = settings.community.roles[j].growcap;
+            impactCoinCounter[account].currentRole.rolename = settings.community.roles[indexToUpdate].rolename;
+            impactCoinCounter[account].currentRole.growcap = settings.community.roles[indexToUpdate].growcap;
             impactCoinCounter[account].amount = amountCurrent;
             
-
         }
 
 

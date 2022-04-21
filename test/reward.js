@@ -37,7 +37,7 @@ describe("reward", async() => {
     const PRICE = ethers.utils.parseEther('1');
 
     // vars
-    var reward, impactCoin, community, nft, mockBonusCaller;
+    var reward, impactCoin, community, nft, mockBonusCaller, erc20;
     var nftState, nftView, mockCostManager;
 
 
@@ -61,6 +61,7 @@ describe("reward", async() => {
         const RewardFactory = await ethers.getContractFactory("Reward");
         reward = await RewardFactory.connect(owner).deploy();
 
+        erc20 = await ImpactCoinFactory.connect(owner).deploy();
 
         // setting up nft
         const MockNFTFactory = await ethers.getContractFactory("MockNFT");
@@ -136,6 +137,71 @@ describe("reward", async() => {
 
     });
 
+    it("should update nft settings after deploy", async() => {
+
+        const oldSettings = await reward.viewSettings();
+        const newCurrency = accounts[6].address; // just get any address to check. ofc it's will be invalid for further calls
+        const newSeriesId = BigNumber.from('200');
+        const newPrice = ethers.utils.parseEther('2');
+
+        await reward.connect(owner).updateNftSettings(newCurrency, newSeriesId, newPrice);
+
+        const newSettings = await reward.viewSettings();
+
+        await expect(newCurrency).to.be.eq(newSettings.nft.currency);
+        await expect(newSeriesId).to.be.eq(newSettings.nft.seriesId);
+        await expect(newPrice).to.be.eq(newSettings.nft.price);
+        
+    });
+
+    it("should update updateCommunitySettings after deploy", async() => {
+        
+        const newRoles = [
+            ["role100", PRICE.mul(ONE)],
+            ["role200", PRICE.mul(TWO)],
+            ["role600", PRICE.mul(SIX)],
+            ["role1000", PRICE.mul(TEN)]
+        ];
+
+        const oldSettings = await reward.viewSettings();
+
+        await reward.connect(owner).updateCommunitySettings(newRoles);
+
+        const newSettings = await reward.viewSettings();
+
+        await expect(oldSettings.community.roles.length).not.to.be.eq(newSettings.community.roles.length);
+        await expect(newRoles.length).to.be.eq(newSettings.community.roles.length);
+        
+    });
+
+
+    it("should update nft settings by owner only", async() => {
+
+        const newCurrency = accounts[6].address; // just get any address to check. ofc it's will be invalid for further calls
+        const newSeriesId = BigNumber.from('200');
+        const newPrice = ethers.utils.parseEther('2');
+
+        await expect(
+            reward.connect(bob).updateNftSettings(newCurrency, newSeriesId, newPrice)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    });
+
+    it("should update updateCommunitySettings by owner only", async() => {
+
+        const newRoles = [
+            ["role100", PRICE.mul(ONE)],
+            ["role200", PRICE.mul(TWO)],
+            ["role600", PRICE.mul(SIX)],
+            ["role1000", PRICE.mul(TEN)]
+        ];
+
+        await expect(
+            reward.connect(bob).updateCommunitySettings(newRoles)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    });
+
     it("shouldnt call bonus method anyone except ITRx", async() => {
         await expect(
             mockBonusCaller.bonusCall(reward.address, alice.address, ONE)
@@ -143,14 +209,16 @@ describe("reward", async() => {
 
     });
 
-    describe("reward", async() => {
+    for (const tokenMode of [false,true]) {
+
+    describe("reward via " + `${tokenMode ? "token" : "eth"}`, async() => {
         var expectedTokenId = SERIES_ID.mul(TWO.pow(BigNumber.from('192'))).add(ZERO);;
         const now = Math.round(Date.now() / 1000);   
         const baseURI = "";
         const suffix = ".json";
         const saleParams = [
             now + 100000, 
-            ZERO_ADDRESS, 
+            tokenMode ? erc20.address : ZERO_ADDRESS, 
             PRICE,
         ];
         const commissions = [
@@ -165,6 +233,7 @@ describe("reward", async() => {
             baseURI,
             suffix
         ];
+
         beforeEach("deploying", async() => {
             // grant role "BONUS_CALLER" to contract shich try to call reward contracts methods
             await reward.connect(owner).grantRole(
@@ -176,17 +245,13 @@ describe("reward", async() => {
             
             
             await nft.connect(owner).setSeriesInfo(SERIES_ID, seriesParams);
+
+            if (tokenMode) {
+                await erc20.connect(owner).mint(PRICE.mul(HUN));
+            }
+            
             
         });
-
-//         it("should call bonus by ITRx", async() => {
-//             // imitation
-// // console.log('mockBonusCaller.address=',mockBonusCaller.address);
-// // console.log('reward.address         =',reward.address);
-// // console.log('alice.address          =',alice.address);
-// // console.log('"BONUS_CALLER"         =',ethers.utils.keccak256(ethers.utils.toUtf8Bytes("BONUS_CALLER")));
-//             await mockBonusCaller.connect(alice).bonusCall(reward.address, alice.address, PRICE, {value: PRICE});
-//         });
 
         it("check minting in ImpactCoin", async() => {
 
@@ -208,11 +273,8 @@ describe("reward", async() => {
             const tokenSaleInfoBefore = await nft.getTokenSaleInfo(expectedTokenId);
             expect(tokenSaleInfoBefore.owner).to.be.equal(alice.address);
             // imitation
-//console.log('bob.address=',bob.address);
             await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE, {value: PRICE});
 
-//console.log(txwait.logs);
-//console.log(txwait.events);
             ////
             // const tokenSaleInfoAfter = await nft.getTokenSaleInfo(expectedTokenId);
             // expect(tokenSaleInfoAfter.owner).to.be.equal(bob.address);
@@ -267,8 +329,10 @@ describe("reward", async() => {
             await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
             await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
             await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+
             await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
             userRoles = await community["getRoles(address[])"]([bob.address]);
+
             expect(userRoles.includes("members")).to.be.eq(true);
             expect(userRoles.includes("role100")).to.be.eq(false);
             expect(userRoles.includes("role200")).to.be.eq(false);
@@ -281,10 +345,28 @@ describe("reward", async() => {
             expect(userRoles.includes("role900")).to.be.eq(false);
             expect(userRoles.includes("role1000")).to.be.eq(true);
             expect(userRoles.length).to.be.eq(TWO);
-            
+
+            const newRoles = [
+                ["role1000", PRICE.mul(ONE)],
+                ["role600", PRICE.mul(TWO)],
+                ["role200", PRICE.mul(SIX)],
+                ["role100", PRICE.mul(TEN)]
+            ];
+
+            await reward.connect(owner).updateCommunitySettings(newRoles);
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            userRoles = await community["getRoles(address[])"]([bob.address]);
+
+
+            expect(userRoles.includes("members")).to.be.eq(true);
+            expect(userRoles.includes("role100")).to.be.eq(true);
+            expect(userRoles.includes("role900")).to.be.eq(false);
+            expect(userRoles.includes("role1000")).to.be.eq(false);
+
         });
     });
 
+    }
     
     //it("test", async() => {});
     //it("test", async() => {});
