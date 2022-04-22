@@ -22,7 +22,6 @@ const HUN = BigNumber.from('100');
 
 const FRACTION = BigNumber.from('100000');
 
-
 chai.use(require('chai-bignumber')());
 
 describe("reward", async() => {
@@ -36,10 +35,16 @@ describe("reward", async() => {
     const SERIES_ID = BigNumber.from('100');
     const PRICE = ethers.utils.parseEther('1');
 
+    const THREE_DAYS = 3*24*60*60;
+    const SEVEN_DAYS = 7*24*60*60;
+    const TEN_DAYS = 7*24*60*60;
+    const MULTIPLIER = 3;
+
     // vars
     var reward, impactCoin, community, nft, mockBonusCaller, erc20;
     var nftState, nftView, mockCostManager;
 
+    var initialBlockTimestamp;
 
     const roles = [
         ["role100", PRICE.mul(ONE)],
@@ -55,6 +60,11 @@ describe("reward", async() => {
     ];
 
     beforeEach("deploying", async() => {
+
+        let blockNumber = await ethers.provider.getBlockNumber();
+        let block = await ethers.provider.getBlock(blockNumber);
+        initialBlockTimestamp = block.timestamp;
+
         const ImpactCoinFactory = await ethers.getContractFactory("ImpactCoin");
         impactCoin = await ImpactCoinFactory.connect(owner).deploy();
 
@@ -79,22 +89,15 @@ describe("reward", async() => {
 
         const MockBonusCallerFactory = await ethers.getContractFactory("MockBonusCaller");
         mockBonusCaller = await MockBonusCallerFactory.connect(owner).deploy();
-
-    // struct CommunityRoles {
-    //     string rolename;
-    //     uint256 growcap;
-    // }
-    // struct CommunitySettings {
-    //     CommunityRoles[] roles;
-    //     Community addr;
-    // }
-    // struct NFTSettings {
-    //     NFT token;
-    //     address currency;
-    //     uint64 seriesId;
-    //     uint256 price;
-    // }
-
+    
+        let impactSettings = [
+            impactCoin.address,
+            [
+                [initialBlockTimestamp+TEN_DAYS, TEN*FRACTION],
+                [initialBlockTimestamp+SEVEN_DAYS, MULTIPLIER*FRACTION], // after 2 days user will obtain in MULTIPLIER times more
+                [initialBlockTimestamp+THREE_DAYS, ONE*FRACTION]
+            ] // empty multipliers
+        ];
         let nftSettings = [
             nft.address,    // NFT token;
             ZERO_ADDRESS,   // address currency;
@@ -108,8 +111,6 @@ describe("reward", async() => {
             community.address   // Community addr;
         ];
 
-
-
         // setting up CommunityContract
         await community.connect(owner).init();
         await community.connect(owner).createRole(masterRole);
@@ -121,10 +122,9 @@ describe("reward", async() => {
             await community.connect(owner).manageRole(masterRole,roles[i][0]);
         }
 
-
         // setting up Reward
         await reward.connect(owner).init(
-            impactCoin.address, //address impactCoinAddress,
+            impactSettings,     //ImpactSettings memory impactSettings,
             nftSettings,        //NFTSettings memory nftSettings,
             communitySettings   //CommunitySettings memory communitySettings    
         );
@@ -134,7 +134,6 @@ describe("reward", async() => {
             ethers.utils.keccak256(ethers.utils.toUtf8Bytes("REWARD_ROLE")),
             reward.address
         );
-        
 
     });
 
@@ -156,7 +155,7 @@ describe("reward", async() => {
     });
 
     it("should update updateCommunitySettings after deploy", async() => {
-        
+
         const newRoles = [
             ["role100", PRICE.mul(ONE)],
             ["role200", PRICE.mul(TWO)],
@@ -172,12 +171,10 @@ describe("reward", async() => {
 
         await expect(oldSettings.community.roles.length).not.to.be.eq(newSettings.community.roles.length);
         await expect(newRoles.length).to.be.eq(newSettings.community.roles.length);
-        
+       
     });
 
-
     it("should update nft settings by owner only", async() => {
-
         const newCurrency = accounts[6].address; // just get any address to check. ofc it's will be invalid for further calls
         const newSeriesId = BigNumber.from('200');
         const newPrice = ethers.utils.parseEther('2');
@@ -185,7 +182,6 @@ describe("reward", async() => {
         await expect(
             reward.connect(bob).updateNftSettings(newCurrency, newSeriesId, newPrice)
         ).to.be.revertedWith("Ownable: caller is not the owner");
-
     });
 
     it("should update updateCommunitySettings by owner only", async() => {
@@ -258,13 +254,31 @@ describe("reward", async() => {
         });
 
         it("check minting in ImpactCoin", async() => {
-let t=await nft.connect(owner).setTrustedForwarder
+
             const balanceBefore = await impactCoin.balanceOf(bob.address);
             // imitation
-            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE, {value: PRICE});
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
             const balanceAfter = await impactCoin.balanceOf(bob.address);
             expect(balanceAfter.sub(balanceBefore)).to.be.eq(PRICE);
+
+
         });
+
+        it("check minting in ImpactCoin to use multipliers", async() => {
+            await ethers.provider.send('evm_increaseTime', [SEVEN_DAYS]);
+            await ethers.provider.send('evm_mine');
+
+
+
+            const balanceBefore = await impactCoin.balanceOf(bob.address);
+            // imitation
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
+            const balanceAfter = await impactCoin.balanceOf(bob.address);
+            expect(balanceAfter.sub(balanceBefore)).not.to.be.eq(PRICE);
+            expect(balanceAfter.sub(balanceBefore)).to.be.eq(PRICE.mul(MULTIPLIER));
+
+            
+        }); 
 
         it("should mint NFT", async() => {
 
@@ -277,7 +291,7 @@ let t=await nft.connect(owner).setTrustedForwarder
             const tokenSaleInfoBefore = await nft.getTokenSaleInfo(expectedTokenId);
             expect(tokenSaleInfoBefore.owner).to.be.equal(alice.address);
             // imitation
-            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE, {value: PRICE});
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
 
             ////
             // const tokenSaleInfoAfter = await nft.getTokenSaleInfo(expectedTokenId);
@@ -296,14 +310,14 @@ let t=await nft.connect(owner).setTrustedForwarder
             expect(userRoles.length).to.be.eq(ZERO);
 
             // make donation for the one first role
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
             userRoles = await community["getRoles(address[])"]([bob.address]);
             expect(userRoles.includes("members")).to.be.eq(true);
             expect(userRoles.includes("role100")).to.be.eq(true);
             expect(userRoles.length).to.be.eq(TWO);
 
             // make donation to obtain next role
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
             userRoles = await community["getRoles(address[])"]([bob.address]);
             expect(userRoles.includes("members")).to.be.eq(true);
             expect(userRoles.includes("role100")).to.be.eq(false);
@@ -311,9 +325,9 @@ let t=await nft.connect(owner).setTrustedForwarder
             expect(userRoles.length).to.be.eq(TWO);
 
             // make several donations to skip several roles and obtain to 
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
 
             userRoles = await community["getRoles(address[])"]([bob.address]);
             expect(userRoles.includes("members")).to.be.eq(true);
@@ -325,16 +339,16 @@ let t=await nft.connect(owner).setTrustedForwarder
             expect(userRoles.length).to.be.eq(TWO);
 
             // make several donations to and obtain the last role
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
 
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
             userRoles = await community["getRoles(address[])"]([bob.address]);
 
             expect(userRoles.includes("members")).to.be.eq(true);
@@ -358,7 +372,7 @@ let t=await nft.connect(owner).setTrustedForwarder
             ];
 
             await reward.connect(owner).updateCommunitySettings(newRoles);
-            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE), {value: PRICE.mul(ONE)});
+            await mockBonusCaller.connect(owner).bonusCall(reward.address, bob.address, PRICE.mul(ONE));
             userRoles = await community["getRoles(address[])"]([bob.address]);
 
 
@@ -372,11 +386,5 @@ let t=await nft.connect(owner).setTrustedForwarder
 
     }
     
-    //it("test", async() => {});
-    //it("test", async() => {});
-    //it("test", async() => {});
-    //it("test", async() => {});
-    //it("test", async() => {});
-    //it("test", async() => {});
 
 });

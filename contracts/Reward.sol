@@ -8,15 +8,15 @@ import "../submodules/CommunityContract/contracts/Community.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-//import "@openzeppelin/contracts-upgradeable/token/ERC777/IERC777RecipientUpgradeable.sol";
 
 import "./interfaces/IReward.sol";
 
 //import "hardhat/console.sol";
 
-contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward/*, IERC777RecipientUpgradeable*/ {
+contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
 
     bytes32 internal constant BONUS_CALLER = keccak256("BONUS_CALLER");
+    uint64 constant FRACTION = 100000;
     
     struct CommunityRoles {
         string rolename;
@@ -26,6 +26,16 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         CommunityRoles[] roles;
         Community addr;
     }
+
+    struct Multipliers {
+        uint64 timestamp;
+        uint64 multiplier;
+    }
+    struct ImpactSettings {
+        address token;
+        Multipliers[] multipliers;
+    }
+
     struct NFTSettings {
         address token;
         address currency;
@@ -34,35 +44,46 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
 
     struct Settings {
-        ImpactCoin impactCoin;
+        ImpactSettings impactSettings;
         CommunitySettings community;
         NFTSettings nft;
     }
 
     Settings internal settings;
 
-
     struct ImpactCounter {
         CommunityRoles currentRole;
         uint256 amount;
     }
     mapping(address => ImpactCounter) impactCoinCounter;
+    
+// mint amount of ImpactCoin to account
+// mint NFT to account with series seriesId
+// calculate total ImpactCoin granted to account and move account to the appropriate role. Remember that user's role would be the one at the moment from this set.
+// method will return extraTokenAmount
+// for example.
+// in beginning user have 0.
+// user obtain 150 ICoin, Total=150 ICoin - contract grant "Role-100",
+// user obtain 200 ICoin, Total=350 ICoin - contract revoke "Role-100" and grant "Role-200",
+// user obtain 700 ICoin, Total=1050 ICoin - contract revoke "Role-200" and grant "Role-800", (here we pass role "Role-500")
 
-    receive() external payable {
+    function bonus(
+        address account, 
+        uint256 amount
+    ) 
+        external 
+        returns(uint256 extraTokenAmount) 
+    {
 
+        require(hasRole(BONUS_CALLER, _msgSender()), "DISABLED");
+
+        proceedImpact(account, amount);
+        proceedNft(account, amount);
+        proceedCommunity(account, amount);
+        
     }
-// /*
-// so make constructor and set params:
-// address of ImpactCoin (see Impact Coin #3 )
-// address of NFT (see NFT contract #4 )
-// uint256 seriesId
-// address of CommunityContract (see CommunityContract #6 )
-// tuple of arrays(or two arrays) (string, uint256)[]
-// like [("Role-100", 100),("Role-200", 200),("Role-500", 500),("Role-800", 800)]
-// */
 
-
-    function viewSettings()public view returns(Settings memory) {
+    function viewSettings() public view returns(Settings memory) {
         return settings;
     }
     
@@ -92,7 +113,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
 
     function init(
-        address impactCoinAddress,
+        ImpactSettings memory impactSettings,
         NFTSettings memory nftSettings,
         CommunitySettings memory communitySettings
     ) 
@@ -100,11 +121,11 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         virtual
         initializer
     {
-        __Reward_init(impactCoinAddress, nftSettings, communitySettings);
+        __Reward_init(impactSettings, nftSettings, communitySettings);
     }
 
     function __Reward_init(
-        address impactCoinAddress,
+        ImpactSettings memory impactSettings,
         NFTSettings memory nftSettings,
         CommunitySettings memory communitySettings
     ) 
@@ -116,9 +137,12 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         settings.nft.seriesId = nftSettings.seriesId;
         settings.nft.price = nftSettings.price;
         
-        
-        settings.impactCoin = ImpactCoin(impactCoinAddress);
-        
+        settings.impactSettings.token = impactSettings.token;
+        //settings.impactSettings.multipliers = impactSettings.multipliers;
+        for(uint256 i = 0; i < impactSettings.multipliers.length; i++) {
+            settings.impactSettings.multipliers.push(Multipliers(impactSettings.multipliers[i].timestamp, impactSettings.multipliers[i].multiplier));
+        }
+
         settings.community.addr = Community(communitySettings.addr);
         for(uint256 i = 0; i < communitySettings.roles.length; i++) {
             settings.community.roles.push(CommunityRoles(communitySettings.roles[i].rolename, communitySettings.roles[i].growcap));
@@ -131,39 +155,14 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
     }
 
-    function tokensReceived(
-        address operator,
-        address from,
-        address to,
-        uint256 amount,
-        bytes calldata userData,
-        bytes calldata operatorData
-    ) external {
-
-    }
-
-// mint amount of ImpactCoin to account
-// mint NFT to account with series seriesId
-// calculate total ImpactCoin granted to account and move account to the appropriate role. Remember that user's role would be the one at the moment from this set.
-// method will return extraTokenAmount
-// for example.
-// in beginning user have 0.
-// user obtain 150 ICoin, Total=150 ICoin - contract grant "Role-100",
-// user obtain 200 ICoin, Total=350 ICoin - contract revoke "Role-100" and grant "Role-200",
-// user obtain 700 ICoin, Total=1050 ICoin - contract revoke "Role-200" and grant "Role-800", (here we pass role "Role-500")
-
-    function bonus(
+    function proceedImpact(
         address account, 
         uint256 amount
     ) 
-        external 
-        payable
-        returns(uint256 extraTokenAmount) 
-    {
-
-        require(hasRole(BONUS_CALLER, _msgSender()), "DISABLED");
-
-        try settings.impactCoin.mint(
+        internal 
+    {   
+        amount = calculateImpactAmount(amount);
+        try ImpactCoin(settings.impactSettings.token).mint(
             account, amount
         )
         {
@@ -174,17 +173,53 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         } catch {
             revert("Errors while minting ICoin");
         }
-        ///////////////////
+    }
 
+    function calculateImpactAmount(
+        uint256 amount
+    ) 
+        internal 
+        view 
+        returns(uint256)
+    {
+        uint256 len = settings.impactSettings.multipliers.length;
+        if (len > 0) {
+
+            // find max timestamp from all that less then now.
+            // there will not a lot multipliers so we can use loop here
+            uint256 multiplier = FRACTION;
+            uint256 tmpTimestamp = 0;
+            for (uint256 i = 0; i < len; i++) {
+
+                if (
+                    (tmpTimestamp <= settings.impactSettings.multipliers[i].timestamp) && 
+                    (block.timestamp >= settings.impactSettings.multipliers[i].timestamp)
+                ) {
+
+                    tmpTimestamp = settings.impactSettings.multipliers[i].timestamp;
+                    multiplier = settings.impactSettings.multipliers[i].multiplier;
+                }
+            }
+
+            amount = amount * multiplier / FRACTION;
+        }
+        return amount;
+    }
+
+    function proceedNft(
+        address account, 
+        uint256 amount
+    ) 
+        internal 
+    {
         // trying call with trusted forward
-        
         bytes memory data = abi.encodeWithSelector(
             NFTMain.mintAndDistributeAuto.selector,
             settings.nft.seriesId,
             account, 
             1
         );
-        // using a meta 
+        // using a meta transaction.  expect that rewardContract is a trusted forwarder for NFT so it can call any method as owner
         // get owner address
         address nftContractOwner = NFT(settings.nft.token).owner();
         data = abi.encodePacked(data,nftContractOwner);    
@@ -198,94 +233,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
             }
             revert(abi.decode(result, (string)));
         }
-
-        // if (settings.nft.currency == address(0)) {
-
-        //     try NFT(settings.nft.token).buyAuto{value:msg.value}(
-        //         settings.nft.seriesId,  //uint64 seriesId, 
-        //         settings.nft.price,     //uint256 price, 
-        //         true,                   // bool safe, 
-        //         0,                      //uint256 hookCount
-        //         account                 // address buyFor
-        //     )
-        //     {
-        //         // if error is not thrown, we are fine
-        //     } catch Error(string memory reason) {
-        //         // This is executed in case revert() was called with a reason
-        //         revert(reason);
-        //     } catch {
-        //         revert("Errors while minting NFT");
-        //     }
-        // } else {
-            
-        //     try NFT(settings.nft.token).buyAuto(
-        //         settings.nft.seriesId,  //uint64 seriesId, 
-        //         settings.nft.currency,  //address currency, 
-        //         settings.nft.price,     //uint256 price, 
-        //         true,                   // bool safe, 
-        //         0,                      //uint256 hookCount
-        //         account                 // address buyFor
-        //     )
-        //     {
-        //         // if error is not thrown, we are fine
-        //     } catch Error(string memory reason) {
-        //         // This is executed in case revert() was called with a reason
-        //         revert(reason);
-        //     } catch {
-        //         revert("Errors while minting NFT");
-        //     }
-        
-        // }
-
-        //////////////////
-        proceedCommunity(account, amount);
-        /*
-        uint256 amountWas = impactCoinCounter[account].amount;
-        uint256 amountCurrent = amountWas + amount;
-        
-        uint256 amountNearToCurrent = type(uint256).max;
-        uint256 j;
-
-        uint256 indexMax = 0;
-        for(uint256 i = 0; i < settings.community.roles.length; i++) {
-            if (
-                amountCurrent <= settings.community.roles[i].growcap &&
-                amountNearToCurrent >= settings.community.roles[i].growcap
-            ) {
-                amountNearToCurrent = settings.community.roles[i].growcap;
-                j = i;
-            }
-
-            if (settings.community.roles[indexMax].growcap <= settings.community.roles[i].growcap) {
-                indexMax = i;
-            }
-
-        }
-
-        // if role changed by grow up usercap  OR roles can be changed by owner and any donation should recalculated(custom case when cap the same but role are different)
-        bool needToUpdate = false;
-        uint256 indexToUpdate = 0;
-
-        if (type(uint256).max != amountNearToCurrent) {
-            indexToUpdate = j;
-            needToUpdate = true;
-        } else if (compareStrings(impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexMax].rolename) == false) {
-            indexToUpdate = indexMax;
-            needToUpdate = true;
-        }
-
-        if (needToUpdate) {
-            _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexToUpdate].rolename);
-            
-            impactCoinCounter[account].currentRole.rolename = settings.community.roles[indexToUpdate].rolename;
-            impactCoinCounter[account].currentRole.growcap = settings.community.roles[indexToUpdate].growcap;
-            impactCoinCounter[account].amount = amountCurrent;
-            
-        }
-        */
-
-
     }
+
     function proceedCommunity(
         address account, 
         uint256 amount
@@ -332,7 +281,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
             impactCoinCounter[account].currentRole.rolename = settings.community.roles[indexToUpdate].rolename;
             impactCoinCounter[account].currentRole.growcap = settings.community.roles[indexToUpdate].growcap;
             impactCoinCounter[account].amount = amountCurrent;
-            
         }
     }
     function _changeCommunityRole(address account, string memory from, string memory to) internal {
@@ -341,7 +289,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
         string[] memory roles = new string[](1);
         
-
         try (settings.community.addr).addMembers(
             members
         )
@@ -370,7 +317,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
                 }
             }
 
-            
             roles[0] = to;
             try (settings.community.addr).grantRoles(
                 members, roles

@@ -5,13 +5,13 @@ import "../interfaces/IReward.sol";
 //import "hardhat/console.sol";
 
 contract MockBonusCaller {
-    function bonusCall(address caller, address account, uint256 amount) public payable {
+    function bonusCall(address caller, address account, uint256 amount) public {
 //console.log("bonusCall");
 //console.log("MockBonusCaller::address(this)", msg.sender);
 //console.log("MockBonusCaller::caller", caller);
 //console.log("msg.value=",msg.value);
 //console.log("gasleft()=",gasleft());
-        try IReward(caller).bonus{value: msg.value}(
+        try IReward(caller).bonus(
             account, amount//, 
         )
         returns(uint256)
