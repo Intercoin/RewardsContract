@@ -83,13 +83,13 @@ module.exports = {
       saveDeployments: true
     }
   },
-  docgen: {
-    path: './docs',
-    clear: true,
-    only: ['contracts/v2'],
-    theme: '../../docgen-custom-markdown',
-    runOnCompile: false,
-  },
+  // docgen: {
+  //   path: './docs',
+  //   clear: true,
+  //   only: ['contracts/v2'],
+  //   theme: '../../docgen-custom-markdown',
+  //   runOnCompile: false,
+  // },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,
     currency: "USD"
@@ -106,7 +106,7 @@ module.exports = {
           settings: {
             optimizer: {
               enabled: true,
-              runs: 200,
+              runs: 100,
             },
             metadata: {
               // do not include the metadata hash, since this is machine dependent
@@ -121,7 +121,7 @@ module.exports = {
           settings: {
             optimizer: {
               enabled: true,
-              runs: 200,
+              runs: 100,
             },
             metadata: {
               // do not include the metadata hash, since this is machine dependent
@@ -141,7 +141,7 @@ module.exports = {
     },
 
   paths: {
-    sources: "contracts",
+    sources: "./contracts",
   },
   gasReporter: {
     currency: 'USD',
