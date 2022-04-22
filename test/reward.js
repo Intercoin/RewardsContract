@@ -121,6 +121,7 @@ describe("reward", async() => {
             await community.connect(owner).manageRole(masterRole,roles[i][0]);
         }
 
+
         // setting up Reward
         await reward.connect(owner).init(
             impactCoin.address, //address impactCoinAddress,
@@ -249,12 +250,15 @@ describe("reward", async() => {
             if (tokenMode) {
                 await erc20.connect(owner).mint(PRICE.mul(HUN));
             }
+
+            // setting trusted forwarder
+            await nft.connect(owner).setTrustedForwarder(reward.address);
             
             
         });
 
         it("check minting in ImpactCoin", async() => {
-
+let t=await nft.connect(owner).setTrustedForwarder
             const balanceBefore = await impactCoin.balanceOf(bob.address);
             // imitation
             await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE, {value: PRICE});

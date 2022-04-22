@@ -176,46 +176,70 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         }
         ///////////////////
 
-        if (settings.nft.currency == address(0)) {
-
-            try NFT(settings.nft.token).buyAuto{value:msg.value}(
-                settings.nft.seriesId,  //uint64 seriesId, 
-                settings.nft.price,     //uint256 price, 
-                true,                   // bool safe, 
-                0,                      //uint256 hookCount
-                account                 // address buyFor
-            )
-            {
-                // if error is not thrown, we are fine
-            } catch Error(string memory reason) {
-                // This is executed in case revert() was called with a reason
-                revert(reason);
-            } catch {
-                revert("Errors while minting NFT");
-            }
-        } else {
-            
-            try NFT(settings.nft.token).buyAuto(
-                settings.nft.seriesId,  //uint64 seriesId, 
-                settings.nft.currency,  //address currency, 
-                settings.nft.price,     //uint256 price, 
-                true,                   // bool safe, 
-                0,                      //uint256 hookCount
-                account                 // address buyFor
-            )
-            {
-                // if error is not thrown, we are fine
-            } catch Error(string memory reason) {
-                // This is executed in case revert() was called with a reason
-                revert(reason);
-            } catch {
-                revert("Errors while minting NFT");
-            }
+        // trying call with trusted forward
         
+        bytes memory data = abi.encodeWithSelector(
+            NFTMain.mintAndDistributeAuto.selector,
+            settings.nft.seriesId,
+            account, 
+            1
+        );
+        // using a meta 
+        // get owner address
+        address nftContractOwner = NFT(settings.nft.token).owner();
+        data = abi.encodePacked(data,nftContractOwner);    
+
+        (bool success, bytes memory result) = address(settings.nft.token).call(data);
+        if (!success) {
+            // Next 5 lines from https://ethereum.stackexchange.com/a/83577
+            if (result.length < 68) revert("Errors while minting NFT"); //silently
+            assembly {
+                result := add(result, 0x04)
+            }
+            revert(abi.decode(result, (string)));
         }
 
-        //////////////////
+        // if (settings.nft.currency == address(0)) {
 
+        //     try NFT(settings.nft.token).buyAuto{value:msg.value}(
+        //         settings.nft.seriesId,  //uint64 seriesId, 
+        //         settings.nft.price,     //uint256 price, 
+        //         true,                   // bool safe, 
+        //         0,                      //uint256 hookCount
+        //         account                 // address buyFor
+        //     )
+        //     {
+        //         // if error is not thrown, we are fine
+        //     } catch Error(string memory reason) {
+        //         // This is executed in case revert() was called with a reason
+        //         revert(reason);
+        //     } catch {
+        //         revert("Errors while minting NFT");
+        //     }
+        // } else {
+            
+        //     try NFT(settings.nft.token).buyAuto(
+        //         settings.nft.seriesId,  //uint64 seriesId, 
+        //         settings.nft.currency,  //address currency, 
+        //         settings.nft.price,     //uint256 price, 
+        //         true,                   // bool safe, 
+        //         0,                      //uint256 hookCount
+        //         account                 // address buyFor
+        //     )
+        //     {
+        //         // if error is not thrown, we are fine
+        //     } catch Error(string memory reason) {
+        //         // This is executed in case revert() was called with a reason
+        //         revert(reason);
+        //     } catch {
+        //         revert("Errors while minting NFT");
+        //     }
+        
+        // }
+
+        //////////////////
+        proceedCommunity(account, amount);
+        /*
         uint256 amountWas = impactCoinCounter[account].amount;
         uint256 amountCurrent = amountWas + amount;
         
@@ -258,10 +282,59 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
             impactCoinCounter[account].amount = amountCurrent;
             
         }
+        */
 
 
     }
+    function proceedCommunity(
+        address account, 
+        uint256 amount
+    ) 
+        internal 
+    {
+        uint256 amountWas = impactCoinCounter[account].amount;
+        uint256 amountCurrent = amountWas + amount;
+        
+        uint256 amountNearToCurrent = type(uint256).max;
+        uint256 j;
 
+        uint256 indexMax = 0;
+        for(uint256 i = 0; i < settings.community.roles.length; i++) {
+            if (
+                amountCurrent <= settings.community.roles[i].growcap &&
+                amountNearToCurrent >= settings.community.roles[i].growcap
+            ) {
+                amountNearToCurrent = settings.community.roles[i].growcap;
+                j = i;
+            }
+
+            if (settings.community.roles[indexMax].growcap <= settings.community.roles[i].growcap) {
+                indexMax = i;
+            }
+
+        }
+
+        // if role changed by grow up usercap  OR roles can be changed by owner and any donation should recalculated(custom case when cap the same but role are different)
+        bool needToUpdate = false;
+        uint256 indexToUpdate = 0;
+
+        if (type(uint256).max != amountNearToCurrent) {
+            indexToUpdate = j;
+            needToUpdate = true;
+        } else if (compareStrings(impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexMax].rolename) == false) {
+            indexToUpdate = indexMax;
+            needToUpdate = true;
+        }
+
+        if (needToUpdate) {
+            _changeCommunityRole(account, impactCoinCounter[account].currentRole.rolename, settings.community.roles[indexToUpdate].rolename);
+            
+            impactCoinCounter[account].currentRole.rolename = settings.community.roles[indexToUpdate].rolename;
+            impactCoinCounter[account].currentRole.growcap = settings.community.roles[indexToUpdate].growcap;
+            impactCoinCounter[account].amount = amountCurrent;
+            
+        }
+    }
     function _changeCommunityRole(address account, string memory from, string memory to) internal {
         address[] memory members = new address[](1);
         members[0] = account;
