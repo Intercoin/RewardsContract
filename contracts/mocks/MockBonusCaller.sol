@@ -12,7 +12,7 @@ contract MockBonusCaller {
 //console.log("msg.value=",msg.value);
 //console.log("gasleft()=",gasleft());
         try IReward(caller).bonus(
-            account, amount//, 
+            address(0), account, 0, amount//, 
         )
         returns(uint256)
         {
