@@ -8,12 +8,17 @@ import "../submodules/CommunityContract/contracts/Community.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
 import "./interfaces/IReward.sol";
 
 //import "hardhat/console.sol";
 
 contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
+
+    using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
+ 
+    EnumerableSetUpgradeable.AddressSet internal tokensWhitelist;
 
     bytes32 internal constant BONUS_CALLER = keccak256("BONUS_CALLER");
     uint64 constant FRACTION = 100000;
@@ -138,6 +143,57 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     {
         __Reward_init(impactSettings, nftSettings, communitySettings);
     }
+
+    function whitelistAdd(
+        address token
+    ) 
+        public
+        onlyOwner 
+    {
+        tokensWhitelist.add(token);
+    }
+
+    function whitelistRemove(
+        address token
+    ) 
+        public
+        onlyOwner 
+    {
+        tokensWhitelist.remove(token);
+    }
+
+    function whitelistExists(
+        address token
+    ) 
+        public
+        view 
+        returns(bool)
+    {
+        return tokensWhitelist.contains(token);
+    }
+
+    function donate(
+        address token, 
+        uint256 amount
+    ) 
+        public
+        payable 
+    {
+        require(tokensWhitelist.contains(token), "not in whitelist");
+        if (token == address(0)) {
+            require(msg.value >= amount, "insufficient funds");
+            uint256 refund = msg.value - amount;
+            if (refund > 0) {
+                (bool transferSuccess, ) = msg.sender.call{gas: 3000, value: (refund)}(new bytes(0));
+                require(transferSuccess, "REFUND_FAILED");
+            }
+            //refund
+
+        } else {
+            IERC20(token).transferFrom(_msgSender(), address(this), amount);
+        }
+    }
+    
 
     function __Reward_init(
         ImpactSettings memory impactSettings,
