@@ -104,14 +104,17 @@ describe("RefugeeCoin", function () {
            await rolesManagementInstance.hasRole(ethers.utils.formatBytes32String(REDEEM_ROLE), alice.address)
         ).to.be.equal(false);
 
-        // make five transfer   .. ES2015
-        // [...Array(5)].forEach(async (_, i) => {
-        //     await refugeeCoin.connect(alice).transfer(bob.address, ONE);
-        // });
+        // make three transfers 
+        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
+        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
+        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
+        
+        // still no redeem role granted to Alice
+        expect(
+           await rolesManagementInstance.hasRole(ethers.utils.formatBytes32String(REDEEM_ROLE), alice.address)
+        ).to.be.equal(false);
 
-        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
-        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
-        await refugeeCoin.connect(alice).transfer(bob.address, ONE);
+        // make another two
         await refugeeCoin.connect(alice).transfer(bob.address, ONE);
         await refugeeCoin.connect(alice).transfer(bob.address, ONE);
         

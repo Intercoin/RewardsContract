@@ -264,6 +264,25 @@ describe("reward", async() => {
 
         });
 
+        it("check minting in ImpactCoin (10% to invitedBy person)", async() => {
+
+            const bobBalanceBefore = await impactCoin.balanceOf(bob.address);
+            const aliceBalanceBefore = await impactCoin.balanceOf(alice.address);
+
+            // set invitedby
+            await community.connect(owner).setInvitedByAddress(alice.address, bob.address);
+            // imitation
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
+
+            const bobBalanceAfter = await impactCoin.balanceOf(bob.address);
+            const aliceBalanceAfter = await impactCoin.balanceOf(alice.address);
+
+            expect(bobBalanceAfter.sub(bobBalanceBefore)).to.be.eq(PRICE.sub(PRICE.div(10)));
+            expect(aliceBalanceAfter.sub(aliceBalanceBefore)).to.be.eq(PRICE.div(10));
+
+
+        });
+
         it("check minting in ImpactCoin to use multipliers", async() => {
             await ethers.provider.send('evm_increaseTime', [SEVEN_DAYS]);
             await ethers.provider.send('evm_mine');

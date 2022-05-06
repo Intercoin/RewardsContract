@@ -176,17 +176,47 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     ) 
         internal 
     {   
+        
         amount = calculateImpactAmount(amount);
-        try ImpactCoin(settings.impactSettings.token).mint(
-            account, amount
+
+        address[2] memory sendto = [account, address(0)];
+        uint256[2] memory amountto = [amount, 0];
+
+        // 10% minted to user who invite 
+        try (settings.community.addr).invitedBy(
+            account
         )
+            returns(address addr)
         {
-            // if error is not thrown, we are fine
+            if (addr != address(0)) {
+                sendto[1] = addr;
+                amountto[1] = amount / 10;
+                amountto[0] -= amountto[1];
+            }
         } catch Error(string memory reason) {
             // This is executed in case revert() was called with a reason
             revert(reason);
         } catch {
-            revert("Errors while minting ICoin");
+            revert("Errors while invitedBy");
+        }
+
+
+        for (uint256 i = 0; i < sendto.length; i++) {
+            if (sendto[i] != address(0)) {
+                    
+                try ImpactCoin(settings.impactSettings.token).mint(
+                    sendto[i], amountto[i]
+                )
+                {
+                    // if error is not thrown, we are fine
+                } catch Error(string memory reason) {
+                    // This is executed in case revert() was called with a reason
+                    revert(reason);
+                } catch {
+                    revert("Errors while minting ICoin");
+                }
+        
+            }
         }
     }
 
