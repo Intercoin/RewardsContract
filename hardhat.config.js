@@ -138,11 +138,12 @@ module.exports = {
 
   namedAccounts: {
     deployer: 0,
-    },
+  },
 
   paths: {
     sources: "./contracts",
   },
+
   gasReporter: {
     currency: 'USD',
     enabled: (process.env.REPORT_GAS === "true") ? true : false

@@ -8,3 +8,6 @@
 [submodule "submodules/IncomeContract"]
 	path = submodules/IncomeContract
 	url = https://github.com/Intercoin/IncomeContract.git
+[submodule "submodules/StakingContract"]
+	path = submodules/StakingContract
+	url = https://github.com/Intercoin/StakingContract.git

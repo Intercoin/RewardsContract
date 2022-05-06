@@ -68,8 +68,11 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 // user obtain 700 ICoin, Total=1050 ICoin - contract revoke "Role-200" and grant "Role-800", (here we pass role "Role-500")
 
     function bonus(
+        address instance, 
         address account, 
+        uint64 duration, 
         uint256 amount
+
     ) 
         external 
         returns(uint256 extraTokenAmount) 
@@ -81,6 +84,18 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         proceedNft(account, amount);
         proceedCommunity(account, amount);
         
+    }
+
+    function transferHook(
+        address operator, 
+        address from, 
+        address to, 
+        uint256 amount
+    ) 
+        external 
+        returns(bool)
+    {
+        return true;
     }
 
     function viewSettings() public view returns(Settings memory) {
