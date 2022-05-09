@@ -14,7 +14,6 @@ contract MockBonusCaller {
         try IReward(caller).bonus(
             address(0), account, 0, amount//, 
         )
-        returns(uint256)
         {
             // if error is not thrown, we are fine
         } catch Error(string memory reason) {

@@ -17,8 +17,35 @@ import "./interfaces/IReward.sol";
 contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
 
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
+    using EnumerableSetUpgradeable for EnumerableSetUpgradeable.UintSet;
  
     EnumerableSetUpgradeable.AddressSet internal tokensWhitelist;
+
+    struct TokenData {
+        //      [user]
+        mapping (address => UserStruct) users;
+        uint256 available;
+        uint256 ratio;
+    }
+    mapping(address => TokenData) tokensData;
+    //////////////////////////
+    // struct Lockup {
+    //     uint64 duration;
+    //     bool exists;
+    // }
+    
+    struct UserStruct {
+        EnumerableSetUpgradeable.UintSet minimumsIndexes;
+        //[minimum index] => [value]
+        mapping(uint256 => uint256) minimums;
+        //Lockup lockup;
+        uint64 duration;
+        bool exists;
+    }
+    
+    uint32 private interval;
+    ///////////////////////////
+
 
     bytes32 internal constant BONUS_CALLER = keccak256("BONUS_CALLER");
     uint64 constant FRACTION = 100000;
@@ -62,6 +89,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
     mapping(address => ImpactCounter) impactCoinCounter;
     
+
+
 // mint amount of ImpactCoin to account
 // mint NFT to account with series seriesId
 // calculate total ImpactCoin granted to account and move account to the appropriate role. Remember that user's role would be the one at the moment from this set.
@@ -77,10 +106,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         address account, 
         uint64 duration, 
         uint256 amount
-
     ) 
         external 
-        returns(uint256 extraTokenAmount) 
     {
 
         require(hasRole(BONUS_CALLER, _msgSender()), "DISABLED");
@@ -88,6 +115,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         proceedImpact(account, amount);
         proceedNft(account, amount);
         proceedCommunity(account, amount);
+        proceedBonuses(instance, account, duration, amount);
         
     }
 
@@ -145,31 +173,44 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
 
     function whitelistAdd(
-        address token
+        address token,
+        uint256 ratio
+
     ) 
         public
         onlyOwner 
     {
-        tokensWhitelist.add(token);
+        bool justAdded = tokensWhitelist.add(token);
+        if (justAdded) { // if just added
+    
+            tokensData[token].available = 0;
+            tokensData[token].ratio = ratio;
+        }
+
     }
 
-    function whitelistRemove(
-        address token
-    ) 
-        public
-        onlyOwner 
-    {
-        tokensWhitelist.remove(token);
-    }
+    // before uncomment answer the question what need to do with locked up tokens in whitelist?
+    // function whitelistRemove(
+    //     address token
+    // ) 
+    //     public
+    //     onlyOwner 
+    // {
+    //     tokensWhitelist.remove(token);
+    // }
 
     function whitelistExists(
         address token
     ) 
         public
         view 
-        returns(bool)
+        returns(bool, uint256, uint256)
     {
-        return tokensWhitelist.contains(token);
+        return (
+            tokensWhitelist.contains(token),
+            tokensData[token].available,
+            tokensData[token].ratio
+        );
     }
 
     function donate(
@@ -223,7 +264,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(BONUS_CALLER, _msgSender());
-
+        
+        interval = 86400; // day in seconds
     }
 
     function proceedImpact(
@@ -384,6 +426,19 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
             impactCoinCounter[account].amount = amountCurrent;
         }
     }
+
+    
+    function proceedBonuses(
+        address instance, 
+        address account, 
+        uint64 duration,
+        uint256 amount
+    ) 
+        internal 
+    {
+        //uint256 tokenIndex = tokensWhitelist.at
+    }
+
     function _changeCommunityRole(address account, string memory from, string memory to) internal {
         address[] memory members = new address[](1);
         members[0] = account;
@@ -433,13 +488,147 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
         }
 
-        
-        
     }
 
 
     function compareStrings(string memory a, string memory b) internal view returns (bool) {
         return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
     }
+
+    /**
+    * @dev adding minimum holding at sender during period from now to timestamp.
+    *
+    * @param addr address which should be restricted
+    * @param amount amount.
+    * @param intervalCount duration in count of intervals defined before
+    */
+    function _minimumsAdd(
+        address token,
+        address addr,
+        uint256 amount, 
+        uint256 intervalCount
+    ) 
+        // public 
+        // onlyOwner()
+        internal
+        returns (bool)
+    {
+        uint256 timestampStart = getIndexInterval(block.timestamp);
+        uint256 timestampEnd = timestampStart + (intervalCount * interval);
+        require(timestampEnd > timestampStart, "TIMESTAMP_INVALID");
+        
+        _minimumsClear(token, addr, false);
+        
+        _minimumsAddLow(token, addr, timestampEnd, amount);
+    
+        return true;
+        
+    }
+    
+    /**
+     * @dev removes all minimums from this address
+     * so all tokens are unlocked to send
+     * @param addr address which should be clear restrict
+     */
+    function _minimumsClear(
+        address token,
+        address addr
+    )
+        internal
+        returns (bool)
+    {
+        return _minimumsClear(token, addr, true);
+    }
+
+    /**
+    * @dev clear expired items from mapping. used while addingMinimum
+    *
+    * @param addr address.
+    * @param deleteAnyway if true when delete items regardless expired or not
+    */
+    function _minimumsClear(
+        address token,
+        address addr,
+        bool deleteAnyway
+    ) 
+        internal 
+        returns (bool) 
+    {
+        uint256 mapIndex = 0;
+        uint256 len = tokensData[token].users[addr].minimumsIndexes.length();
+        if (len > 0) {
+            for (uint256 i=len; i>0; i--) {
+                mapIndex = tokensData[token].users[addr].minimumsIndexes.at(i-1);
+                if (
+                    (deleteAnyway == true) ||
+                    (getIndexInterval(block.timestamp) > mapIndex)
+                ) {
+                    delete tokensData[token].users[addr].minimums[mapIndex];
+                    tokensData[token].users[addr].minimumsIndexes.remove(mapIndex);
+                }
+                
+            }
+        }
+        return true;
+    }
+
+
+        
+    /**
+     * added minimum if not exist by timestamp else append it
+     * @param addr destination address
+     * @param timestampEnd "until time"
+     * @param amount amount
+     */
+    //function _appendMinimum(
+    function _minimumsAddLow(
+        address token,
+        address addr,
+        uint256 timestampEnd, 
+        uint256 amount
+    )
+        private
+    {
+        tokensData[token].users[addr].minimumsIndexes.add(timestampEnd);
+        
+        // none-gradual
+        tokensData[token].users[addr].minimums[timestampEnd] = tokensData[token].users[addr].minimums[timestampEnd] + amount;
+        
+    }
+
+    /**
+    * @dev gives index interval. here we deliberately making a loss precision(div before mul) to get the same index during interval.
+    * @param ts unixtimestamp
+    */
+    function getIndexInterval(uint256 ts) internal view returns(uint256) {
+        return ts / interval * interval;
+    }
+    
+    // useful method to sort native memory array 
+    function sortAsc(uint256[] memory data) private returns(uint[] memory) {
+       quickSortAsc(data, int(0), int(data.length - 1));
+       return data;
+    }
+    
+    function quickSortAsc(uint[] memory arr, int left, int right) private {
+        int i = left;
+        int j = right;
+        if(i==j) return;
+        uint pivot = arr[uint(left + (right - left) / 2)];
+        while (i <= j) {
+            while (arr[uint(i)] < pivot) i++;
+            while (pivot < arr[uint(j)]) j--;
+            if (i <= j) {
+                (arr[uint(i)], arr[uint(j)]) = (arr[uint(j)], arr[uint(i)]);
+                i++;
+                j--;
+            }
+        }
+        if (left < j)
+            quickSortAsc(arr, left, j);
+        if (i < right)
+            quickSortAsc(arr, i, right);
+    }
+    
 }
 
