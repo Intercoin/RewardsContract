@@ -405,5 +405,17 @@ describe("reward", async() => {
 
     }
     
+    describe("donation", async() => {
+        it("should add to whitelist", async() => {});
+        it("should exists in whitelist after adding", async() => {});
+        it("shouldn't donate if token not in whitelsit ", async() => {});
+        it("should donate eth(via donate method and directly) ", async() => {});
+        it("should donate tokens ", async() => {});
+        it("should claim tokens after staking as reward", async() => {});
+        
+        //it("should ", async() => {});
+    });
+
+    
 
 });

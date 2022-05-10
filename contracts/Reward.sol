@@ -9,12 +9,14 @@ import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC777/IERC777RecipientUpgradeable.sol";
+
 
 import "./interfaces/IReward.sol";
 
 //import "hardhat/console.sol";
 
-contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward {
+contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward, IERC777RecipientUpgradeable {
 
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.UintSet;
@@ -89,8 +91,24 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     }
     mapping(address => ImpactCounter) impactCoinCounter;
     
+    function tokensReceived(
+        address operator,
+        address from,
+        address to,
+        uint256 amount,
+        bytes calldata userData,
+        bytes calldata operatorData
+    ) external {
+        // from(sender), token    amount
+        _donate(from, msg.sender, amount);
+    }
 
 
+    receive() external payable {
+        _donate(_msgSender(), address(0), msg.value);
+        
+    }
+    
 // mint amount of ImpactCoin to account
 // mint NFT to account with series seriesId
 // calculate total ImpactCoin granted to account and move account to the appropriate role. Remember that user's role would be the one at the moment from this set.
@@ -220,19 +238,33 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         public
         payable 
     {
+        _donate(_msgSender(), token, amount);
+    }
+
+    function _donate(
+        address sender,
+        address token, 
+        uint256 amount
+    ) 
+        internal
+    {
         require(tokensWhitelist.contains(token), "not in whitelist");
+        
         if (token == address(0)) {
             require(msg.value >= amount, "insufficient funds");
             uint256 refund = msg.value - amount;
             if (refund > 0) {
-                (bool transferSuccess, ) = msg.sender.call{gas: 3000, value: (refund)}(new bytes(0));
+                (bool transferSuccess, ) = sender.call{gas: 3000, value: (refund)}(new bytes(0));
                 require(transferSuccess, "REFUND_FAILED");
             }
             //refund
 
         } else {
-            IERC20(token).transferFrom(_msgSender(), address(this), amount);
+            IERC20(token).transferFrom(sender, address(this), amount);
         }
+
+        tokensData[token].available += amount;
+
     }
     
 
