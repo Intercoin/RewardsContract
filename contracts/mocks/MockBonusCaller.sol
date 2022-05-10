@@ -5,14 +5,30 @@ import "../interfaces/IReward.sol";
 //import "hardhat/console.sol";
 
 contract MockBonusCaller {
-    function bonusCall(address caller, address account, uint256 amount) public {
-//console.log("bonusCall");
-//console.log("MockBonusCaller::address(this)", msg.sender);
-//console.log("MockBonusCaller::caller", caller);
-//console.log("msg.value=",msg.value);
-//console.log("gasleft()=",gasleft());
+
+    address public tradedToken;
+    uint64 public duration;
+
+    function setVars(
+        address tradedToken_,
+        uint64 duration_
+    )
+        public
+    {
+        tradedToken = tradedToken_;
+        duration = duration_;
+    }
+
+    function bonusCall(
+        address caller, 
+        address account, 
+        uint256 amount
+    ) 
+        public 
+    {
+
         try IReward(caller).bonus(
-            address(0), account, 0, amount//, 
+            address(this), account, duration, amount//, 
         )
         {
             // if error is not thrown, we are fine

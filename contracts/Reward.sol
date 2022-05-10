@@ -14,7 +14,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC777/IERC777RecipientUpgrade
 
 import "./interfaces/IReward.sol";
 
-//import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward, IERC777RecipientUpgradeable {
 
@@ -23,11 +23,14 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
  
     EnumerableSetUpgradeable.AddressSet internal tokensWhitelist;
 
+    event Claimed(address indexed token, address indexed account, uint256 amount);
+
     struct TokenData {
         //      [user]
         mapping (address => UserStruct) users;
         uint256 available;
         uint256 ratio;
+        uint256 fractionPerSec;
     }
     mapping(address => TokenData) tokensData;
     //////////////////////////
@@ -35,11 +38,14 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     //     uint64 duration;
     //     bool exists;
     // }
-    
+    struct Deposit {
+        uint256 amount;
+        uint256 fractionPerSec;
+    }
     struct UserStruct {
         EnumerableSetUpgradeable.UintSet minimumsIndexes;
         //[minimum index] => [value]
-        mapping(uint256 => uint256) minimums;
+        mapping(uint256 => Deposit) minimums;
         //Lockup lockup;
         uint64 duration;
         bool exists;
@@ -192,7 +198,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
     function whitelistAdd(
         address token,
-        uint256 ratio
+        uint256 ratio,
+        uint256 fractionPerSec
 
     ) 
         public
@@ -203,6 +210,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     
             tokensData[token].available = 0;
             tokensData[token].ratio = ratio;
+            tokensData[token].fractionPerSec = fractionPerSec;
         }
 
     }
@@ -222,12 +230,13 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     ) 
         public
         view 
-        returns(bool, uint256, uint256)
+        returns(bool, uint256, uint256, uint256)
     {
         return (
             tokensWhitelist.contains(token),
             tokensData[token].available,
-            tokensData[token].ratio
+            tokensData[token].ratio,
+            tokensData[token].fractionPerSec
         );
     }
 
@@ -241,6 +250,52 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         _donate(_msgSender(), token, amount);
     }
 
+    function claim(
+
+    )
+        public
+    {
+
+        uint256 mapIndex;
+        uint256 toClaim;
+        uint256 extra;
+        address token;
+        address account = _msgSender();
+
+        for (uint256 j=0; j < tokensWhitelist.length(); j++) {
+            token = tokensWhitelist.at(j);
+            toClaim = 0;
+            for (uint256 i=0; i < tokensData[token].users[account].minimumsIndexes.length(); i++) {
+                mapIndex = tokensData[token].users[account].minimumsIndexes.at(i);
+
+                // calculate extra
+                extra = (block.timestamp >= mapIndex) 
+                    ? 
+                    tokensData[token].users[account].minimums[mapIndex].fractionPerSec * (block.timestamp - mapIndex) 
+                    : 
+                    0
+                ;
+
+                toClaim = toClaim + extra + (tokensData[token].users[account].minimums[mapIndex].amount);
+                
+            }
+            
+            require(toClaim <= ERC20(token).balanceOf(address(this)), "insufficient funds");
+            
+            if (toClaim <= ERC20(token).balanceOf(address(this))) {
+                ERC20(token).transfer(account, toClaim);
+
+                emit Claimed(token, account, toClaim);
+
+                _minimumsClear(token, account, false);
+            }
+
+        }
+
+        
+
+    }
+
     function _donate(
         address sender,
         address token, 
@@ -249,7 +304,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         internal
     {
         require(tokensWhitelist.contains(token), "not in whitelist");
-        
+
         if (token == address(0)) {
             require(msg.value >= amount, "insufficient funds");
             uint256 refund = msg.value - amount;
@@ -468,7 +523,20 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     ) 
         internal 
     {
-        //uint256 tokenIndex = tokensWhitelist.at
+        
+        // get Traded token
+        bytes memory data = abi.encodeWithSelector(bytes4(keccak256(bytes("tradedToken()"))));
+        (bool success, bytes memory returndata) = instance.call(data);
+
+        address token = abi.decode(returndata,(address));
+        if (tokensWhitelist.contains(token)) {
+            console.log("duration = ", duration);
+            // todo: check current balance? 
+            _minimumsAdd(token, account, amount*tokensData[token].ratio/FRACTION, duration);
+            // note that here are duration is in count of intervals
+            // if duration = 3 it means that 3 * interval  = 3 * 86400 = 3 days
+        }
+
     }
 
     function _changeCommunityRole(address account, string memory from, string memory to) internal {
@@ -549,7 +617,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         uint256 timestampEnd = timestampStart + (intervalCount * interval);
         require(timestampEnd > timestampStart, "TIMESTAMP_INVALID");
         
-        _minimumsClear(token, addr, false);
+        //_minimumsClear(token, addr, false);
+        // we will delete only while claiming
         
         _minimumsAddLow(token, addr, timestampEnd, amount);
     
@@ -623,10 +692,78 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
     {
         tokensData[token].users[addr].minimumsIndexes.add(timestampEnd);
         
-        // none-gradual
-        tokensData[token].users[addr].minimums[timestampEnd] = tokensData[token].users[addr].minimums[timestampEnd] + amount;
+        tokensData[token].users[addr].minimums[timestampEnd].amount = tokensData[token].users[addr].minimums[timestampEnd].amount + amount;
+        tokensData[token].users[addr].minimums[timestampEnd].fractionPerSec = tokensData[token].fractionPerSec;
+        
         
     }
+
+    function getMinimum(
+        address token,
+        address addr
+    ) 
+        public
+        view
+        returns (uint256 amountLocked) 
+    {
+        return _getMinimum(token, addr);
+    }
+    /**
+    * @dev get sum minimum and sum gradual minimums from address for period from now to timestamp.
+    *
+    * @param addr address.
+    */
+    function _getMinimum(
+        address token,
+        address addr
+    ) 
+        internal 
+        view
+        returns (uint256 amountLocked) 
+    {
+        uint256 mapIndex;
+        uint256 extra;
+
+        if (tokensWhitelist.contains(token)) {
+            for (uint256 i=0; i < tokensData[token].users[addr].minimumsIndexes.length(); i++) {
+                mapIndex = tokensData[token].users[addr].minimumsIndexes.at(i);
+               
+                if (block.timestamp >= mapIndex) { // calculate extra
+
+                    extra = tokensData[token].users[addr].minimums[mapIndex].fractionPerSec * (block.timestamp - mapIndex);
+                } else {
+                    extra = 0;
+                }
+
+                amountLocked = amountLocked + extra + (tokensData[token].users[addr].minimums[mapIndex].amount);
+                
+            }
+        }
+
+
+
+//         uint256 mapIndex;
+//         uint256 extra;
+//         address token;
+//         for (uint256 j=0; j < tokensWhitelist.length(); j++) {
+//             token = tokensWhitelist.at(j);
+//             for (uint256 i=0; i < tokensData[token].users[addr].minimumsIndexes.length(); i++) {
+//                 mapIndex = tokensData[token].users[addr].minimumsIndexes.at(i);
+// console.log("block.timestamp = ",block.timestamp);
+// console.log("mapIndex        = ",mapIndex);                
+//                 if (block.timestamp >= mapIndex) { // calculate extra
+
+//                     extra = tokensData[token].users[addr].minimums[mapIndex].fractionPerSec * (block.timestamp - mapIndex);
+//                 } else {
+//                     extra = 0;
+//                 }
+
+//                 amountLocked = amountLocked + extra + (tokensData[token].users[addr].minimums[mapIndex].amount);
+                
+//             }
+//         }
+    }
+
 
     /**
     * @dev gives index interval. here we deliberately making a loss precision(div before mul) to get the same index during interval.

@@ -2,9 +2,8 @@ const { ethers, waffle } = require('hardhat');
 const { BigNumber } = require('ethers');
 const { expect } = require('chai');
 const chai = require('chai');
-const { time } = require('@openzeppelin/test-helpers');
+const { time, constants } = require('@openzeppelin/test-helpers');
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD';
 
 const ZERO = BigNumber.from('0');
@@ -24,6 +23,10 @@ const FRACTION = BigNumber.from('100000');
 
 chai.use(require('chai-bignumber')());
 
+async function getBalance(account) {
+    return await waffle.provider.getBalance(account);
+}
+
 describe("reward", async() => {
     const accounts = waffle.provider.getWallets();
 
@@ -33,7 +36,8 @@ describe("reward", async() => {
     const charlie = accounts[3];
 
     const SERIES_ID = BigNumber.from('100');
-    const PRICE = ethers.utils.parseEther('1');
+    //const PRICE = ethers.utils.parseEther('1');
+    const PRICE = BigNumber.from('1000000000000000000');;
 
     const THREE_DAYS = 3*24*60*60;
     const SEVEN_DAYS = 7*24*60*60;
@@ -42,7 +46,7 @@ describe("reward", async() => {
 
     // vars
     var reward, impactCoin, community, nft, mockBonusCaller, erc20;
-    var nftState, nftView, mockCostManager;
+    var nftState, nftView, mockCostManager, mockStakingPool;
 
     var initialBlockTimestamp;
 
@@ -77,7 +81,7 @@ describe("reward", async() => {
         const MockNFTFactory = await ethers.getContractFactory("MockNFT");
         let nftImpl = await MockNFTFactory.connect(owner).deploy();
         const MockNFTFactoryFactory = await ethers.getContractFactory("MockNFTFactory");
-        nftFactory = await MockNFTFactoryFactory.connect(owner).deploy(nftImpl.address, ZERO_ADDRESS);
+        nftFactory = await MockNFTFactoryFactory.connect(owner).deploy(nftImpl.address, constants.ZERO_ADDRESS);
 
         let tx = await nftFactory.connect(owner)["produce(string,string,string)"]("NFT Edition", "NFT", "");
         let receipt = await tx.wait();
@@ -89,7 +93,7 @@ describe("reward", async() => {
 
         const MockBonusCallerFactory = await ethers.getContractFactory("MockBonusCaller");
         mockBonusCaller = await MockBonusCallerFactory.connect(owner).deploy();
-    
+        
         let impactSettings = [
             impactCoin.address,
             [
@@ -100,7 +104,7 @@ describe("reward", async() => {
         ];
         let nftSettings = [
             nft.address,    // NFT token;
-            ZERO_ADDRESS,   // address currency;
+            constants.ZERO_ADDRESS,   // address currency;
             SERIES_ID,      // uint64 seriesId;
             PRICE           // uint256 price;
         ];
@@ -206,6 +210,93 @@ describe("reward", async() => {
 
     });
 
+    describe("donation", async() => {
+        var erc20, erc777;
+        beforeEach("deploying", async() => {
+            const ERC20F = await ethers.getContractFactory("MockERC20Mintable");
+            const ERC777F = await ethers.getContractFactory("MockERC777Mintable");
+
+            erc20 = await ERC20F.connect(owner).deploy();
+            erc777 = await ERC777F.connect(owner).deploy();
+        });
+
+        it("should add to whitelist", async() => {
+            await expect(
+                reward.connect(alice).whitelistAdd(erc20.address, ZERO)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+
+            let tokenExists, availableAmount, ratio;
+
+            
+            for (const tokenAddress of [erc20.address, constants.ZERO_ADDRESS]) {
+
+                [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(tokenAddress)
+                expect(tokenExists).to.be.eq(false);
+
+                await reward.connect(owner).whitelistAdd(tokenAddress, ZERO);
+
+                [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(tokenAddress)
+                expect(tokenExists).to.be.eq(true);
+            
+            }
+
+        });
+        
+        it("shouldn't donate if token not in whitelist ", async() => {
+            await expect(
+                reward.connect(alice).donate(constants.ZERO_ADDRESS, PRICE, {value: PRICE})
+            ).to.be.revertedWith("not in whitelist");
+
+            await expect(
+                reward.connect(alice).donate(erc20.address, PRICE, {value: PRICE})
+            ).to.be.revertedWith("not in whitelist");
+        });
+
+
+        it("should donate eth(via donate method and directly) ", async() => {
+            await reward.connect(owner).whitelistAdd(constants.ZERO_ADDRESS, ZERO);
+
+            const balanceETHBefore = await getBalance(reward.address);
+            // send via method `donate` and check refund
+            await reward.connect(alice).donate(constants.ZERO_ADDRESS, PRICE, {value: PRICE.mul(TWO)});
+            const balanceETHAfter = await getBalance(reward.address);
+
+            expect(balanceETHAfter.sub(balanceETHBefore)).to.be.eq(PRICE);
+
+            // send directly 
+            await alice.sendTransaction({to: reward.address, value: PRICE});
+            const balanceETHAfter2 = await getBalance(reward.address);
+
+            expect(balanceETHAfter2.sub(balanceETHAfter)).to.be.eq(PRICE);
+
+        });
+
+        it("should donate tokens ", async() => {
+            await reward.connect(owner).whitelistAdd(erc20.address, ZERO);
+            await erc20.connect(owner).mint(alice.address, PRICE.mul(TWO));
+
+            const balanceBefore = await erc20.balanceOf(reward.address);
+            // send via method `donate`
+            await erc20.connect(alice).approve(reward.address, PRICE);
+            await reward.connect(alice).donate(erc20.address, PRICE);
+
+            const balanceAfter = await erc20.balanceOf(reward.address);
+
+            expect(balanceAfter.sub(balanceBefore)).to.be.eq(PRICE);
+
+            // send directly 
+            await erc20.connect(alice).transfer(reward.address, PRICE);
+            const balanceAfter2 = await erc20.balanceOf(reward.address);
+
+            expect(balanceAfter2.sub(balanceAfter)).to.be.eq(PRICE);
+
+        });
+
+        
+        // it("should claim tokens after staking as reward", async() => {});
+        //it("should ", async() => {});
+    });
+
     for (const tokenMode of [false,true]) {
 
     describe("reward via " + `${tokenMode ? "token" : "eth"}`, async() => {
@@ -215,12 +306,12 @@ describe("reward", async() => {
         const suffix = ".json";
         const saleParams = [
             now + 100000, 
-            tokenMode ? erc20.address : ZERO_ADDRESS, 
+            tokenMode ? erc20.address : constants.ZERO_ADDRESS, 
             PRICE,
         ];
         const commissions = [
             ZERO,
-            ZERO_ADDRESS
+            constants.ZERO_ADDRESS
         ];
         const seriesParams = [
             alice.address,  
@@ -231,7 +322,15 @@ describe("reward", async() => {
             suffix
         ];
 
+        var poolTradedTokenERC20;
+        var poolDuration;
         beforeEach("deploying", async() => {
+            
+            const ERC20F = await ethers.getContractFactory("MockERC20Mintable");
+
+            poolTradedTokenERC20 = await ERC20F.connect(owner).deploy();
+            poolDuration = 365; //1year   //24*60*60; // 1 day in seconds
+
             // grant role "BONUS_CALLER" to contract shich try to call reward contracts methods
             await reward.connect(owner).grantRole(
                 ethers.utils.keccak256(ethers.utils.toUtf8Bytes("BONUS_CALLER")), // "BONUS_CALLER"
@@ -250,7 +349,7 @@ describe("reward", async() => {
             // setting trusted forwarder
             await nft.connect(owner).setTrustedForwarder(reward.address);
             
-            
+            await mockBonusCaller.setVars(poolTradedTokenERC20.address, poolDuration);
         });
 
         it("check minting in ImpactCoin", async() => {
@@ -260,7 +359,6 @@ describe("reward", async() => {
             await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
             const balanceAfter = await impactCoin.balanceOf(bob.address);
             expect(balanceAfter.sub(balanceBefore)).to.be.eq(PRICE);
-
 
         });
 
@@ -301,8 +399,6 @@ describe("reward", async() => {
 
         it("should mint NFT", async() => {
 
-            // ////////////////////////////////////////////////////////////
-            
             // token does not exists, but token's owner is a author of series
             await expect(
                 nft.ownerOf(expectedTokenId)
@@ -318,6 +414,46 @@ describe("reward", async() => {
             const ownerAfter = await nft.ownerOf(expectedTokenId);
             expect(ownerAfter).to.be.equal(bob.address);
             
+        });
+
+        it("check rewards", async() => {
+            
+            console.log("bob lockedup[before] = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
+            await reward.connect(owner).whitelistAdd(poolTradedTokenERC20.address, FRACTION, FRACTION);
+            // ////////////////////////////////////////////////////////////
+            // imitation
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
+            
+
+            console.log("bob lockedup [after] = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
+            
+            
+            for (const dayP of [182,182,182,182,182] ) {
+                await ethers.provider.send('evm_increaseTime', [dayP*24*60*60]);
+                await ethers.provider.send('evm_mine');
+
+                console.log("bob lockedup[after]X = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
+            }
+            
+            await expect(
+                reward.connect(bob).claim()
+            ).to.be.revertedWith("insufficient funds");
+
+
+            let t = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
+
+            await poolTradedTokenERC20.mint(reward.address, t.mul(TWO));
+
+            const balanceBefore = await poolTradedTokenERC20.balanceOf(bob.address);
+
+            await reward.connect(bob).claim();
+
+            const balanceAfter = await poolTradedTokenERC20.balanceOf(bob.address);
+
+            console.log("bob balanceBefore= ", balanceBefore.toString());
+            console.log("bob balanceAfter = ", balanceAfter.toString());
+            console.log("bob t            = ", t.toString());
+
         });
 
         it("check role", async() => {
@@ -405,16 +541,7 @@ describe("reward", async() => {
 
     }
     
-    describe("donation", async() => {
-        it("should add to whitelist", async() => {});
-        it("should exists in whitelist after adding", async() => {});
-        it("shouldn't donate if token not in whitelsit ", async() => {});
-        it("should donate eth(via donate method and directly) ", async() => {});
-        it("should donate tokens ", async() => {});
-        it("should claim tokens after staking as reward", async() => {});
-        
-        //it("should ", async() => {});
-    });
+    
 
     
 
