@@ -451,7 +451,10 @@ describe("reward", async() => {
             const balanceAfter = await poolTradedTokenERC20.balanceOf(bob.address);
 
             expect(expected_latest).to.be.eq(balanceAfter.sub(balanceBefore));
+            
+            const available_after_claim = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
 
+            expect(available_after_claim).to.be.eq(ZERO);
         });
 
         it("check role", async() => {
