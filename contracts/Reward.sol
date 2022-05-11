@@ -11,10 +11,9 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC777/IERC777RecipientUpgradeable.sol";
 
-
 import "./interfaces/IReward.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, AccessControlUpgradeable, IReward, IERC777RecipientUpgradeable {
 
@@ -112,7 +111,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
     receive() external payable {
         _donate(_msgSender(), address(0), msg.value);
-        
     }
     
 // mint amount of ImpactCoin to account
@@ -205,6 +203,8 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         public
         onlyOwner 
     {
+        require(token != address(0), "not allowed");
+
         bool justAdded = tokensWhitelist.add(token);
         if (justAdded) { // if just added
     
@@ -247,6 +247,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         public
         payable 
     {
+        
         _donate(_msgSender(), token, amount);
     }
 
@@ -530,7 +531,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
 
         address token = abi.decode(returndata,(address));
         if (tokensWhitelist.contains(token)) {
-            console.log("duration = ", duration);
             // todo: check current balance? 
             _minimumsAdd(token, account, amount*tokensData[token].ratio/FRACTION, duration);
             // note that here are duration is in count of intervals
@@ -616,7 +616,7 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         uint256 timestampStart = getIndexInterval(block.timestamp);
         uint256 timestampEnd = timestampStart + (intervalCount * interval);
         require(timestampEnd > timestampStart, "TIMESTAMP_INVALID");
-        
+
         //_minimumsClear(token, addr, false);
         // we will delete only while claiming
         
@@ -729,7 +729,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
                 mapIndex = tokensData[token].users[addr].minimumsIndexes.at(i);
                
                 if (block.timestamp >= mapIndex) { // calculate extra
-
                     extra = tokensData[token].users[addr].minimums[mapIndex].fractionPerSec * (block.timestamp - mapIndex);
                 } else {
                     extra = 0;
@@ -739,29 +738,6 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
                 
             }
         }
-
-
-
-//         uint256 mapIndex;
-//         uint256 extra;
-//         address token;
-//         for (uint256 j=0; j < tokensWhitelist.length(); j++) {
-//             token = tokensWhitelist.at(j);
-//             for (uint256 i=0; i < tokensData[token].users[addr].minimumsIndexes.length(); i++) {
-//                 mapIndex = tokensData[token].users[addr].minimumsIndexes.at(i);
-// console.log("block.timestamp = ",block.timestamp);
-// console.log("mapIndex        = ",mapIndex);                
-//                 if (block.timestamp >= mapIndex) { // calculate extra
-
-//                     extra = tokensData[token].users[addr].minimums[mapIndex].fractionPerSec * (block.timestamp - mapIndex);
-//                 } else {
-//                     extra = 0;
-//                 }
-
-//                 amountLocked = amountLocked + extra + (tokensData[token].users[addr].minimums[mapIndex].amount);
-                
-//             }
-//         }
     }
 
 

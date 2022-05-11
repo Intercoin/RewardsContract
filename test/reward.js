@@ -36,8 +36,8 @@ describe("reward", async() => {
     const charlie = accounts[3];
 
     const SERIES_ID = BigNumber.from('100');
-    //const PRICE = ethers.utils.parseEther('1');
-    const PRICE = BigNumber.from('1000000000000000000');;
+    const PRICE = ethers.utils.parseEther('1');
+    //const PRICE = BigNumber.from('1000000000000000000');;
 
     const THREE_DAYS = 3*24*60*60;
     const SEVEN_DAYS = 7*24*60*60;
@@ -222,23 +222,22 @@ describe("reward", async() => {
 
         it("should add to whitelist", async() => {
             await expect(
-                reward.connect(alice).whitelistAdd(erc20.address, ZERO)
+                reward.connect(alice).whitelistAdd(erc20.address, ZERO, ZERO)
             ).to.be.revertedWith("Ownable: caller is not the owner");
+
+            await expect(
+                reward.connect(owner).whitelistAdd(constants.ZERO_ADDRESS, ZERO, ZERO)
+            ).to.be.revertedWith("not allowed");
 
             let tokenExists, availableAmount, ratio;
 
-            
-            for (const tokenAddress of [erc20.address, constants.ZERO_ADDRESS]) {
+            [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(erc20.address)
+            expect(tokenExists).to.be.eq(false);
 
-                [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(tokenAddress)
-                expect(tokenExists).to.be.eq(false);
+            await reward.connect(owner).whitelistAdd(erc20.address, ZERO, ZERO);
 
-                await reward.connect(owner).whitelistAdd(tokenAddress, ZERO);
-
-                [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(tokenAddress)
-                expect(tokenExists).to.be.eq(true);
-            
-            }
+            [tokenExists, availableAmount, ratio] = await reward.connect(alice).whitelistExists(erc20.address)
+            expect(tokenExists).to.be.eq(true);
 
         });
         
@@ -252,27 +251,8 @@ describe("reward", async() => {
             ).to.be.revertedWith("not in whitelist");
         });
 
-
-        it("should donate eth(via donate method and directly) ", async() => {
-            await reward.connect(owner).whitelistAdd(constants.ZERO_ADDRESS, ZERO);
-
-            const balanceETHBefore = await getBalance(reward.address);
-            // send via method `donate` and check refund
-            await reward.connect(alice).donate(constants.ZERO_ADDRESS, PRICE, {value: PRICE.mul(TWO)});
-            const balanceETHAfter = await getBalance(reward.address);
-
-            expect(balanceETHAfter.sub(balanceETHBefore)).to.be.eq(PRICE);
-
-            // send directly 
-            await alice.sendTransaction({to: reward.address, value: PRICE});
-            const balanceETHAfter2 = await getBalance(reward.address);
-
-            expect(balanceETHAfter2.sub(balanceETHAfter)).to.be.eq(PRICE);
-
-        });
-
         it("should donate tokens ", async() => {
-            await reward.connect(owner).whitelistAdd(erc20.address, ZERO);
+            await reward.connect(owner).whitelistAdd(erc20.address, ONE, ONE);
             await erc20.connect(owner).mint(alice.address, PRICE.mul(TWO));
 
             const balanceBefore = await erc20.balanceOf(reward.address);
@@ -418,41 +398,59 @@ describe("reward", async() => {
 
         it("check rewards", async() => {
             
-            console.log("bob lockedup[before] = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
-            await reward.connect(owner).whitelistAdd(poolTradedTokenERC20.address, FRACTION, FRACTION);
+            const extraBonus = ethers.utils.parseEther('0.0001');
+            const ratio = ONE.mul(FRACTION);
+            // ratio = x1, extra = 0.0001 eth per per seconds after over poolDuration, poolDuration = 1 year
+            await reward.connect(owner).whitelistAdd(poolTradedTokenERC20.address, FRACTION, extraBonus);
             // ////////////////////////////////////////////////////////////
             // imitation
+            const timestamp_starting = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const timestamp_when_starting_calc_extraToken = BigNumber.from(
+                                                Math.floor((timestamp_starting+1)/(86400))*(86400)
+                                            ).add(poolDuration*86400);
+
             await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
-            
 
-            console.log("bob lockedup [after] = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
-            
-            
-            for (const dayP of [182,182,182,182,182] ) {
-                await ethers.provider.send('evm_increaseTime', [dayP*24*60*60]);
-                await ethers.provider.send('evm_mine');
+            await ethers.provider.send('evm_increaseTime', [(200+165+365)*24*60*60]);
+            await ethers.provider.send('evm_mine');
 
-                console.log("bob lockedup[after]X = ", await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address));
-            }
-            
+            const available_after_2_years = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
+            const timestamp_after_2_years = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const expected_after_2_years = (
+                PRICE.mul(ratio).div(FRACTION).add( 
+                    (
+                        BigNumber.from(timestamp_after_2_years).sub(timestamp_when_starting_calc_extraToken)
+                        
+                    ).mul(extraBonus) 
+                )
+            );
+
+            expect(available_after_2_years).to.be.eq(expected_after_2_years);
+        
             await expect(
                 reward.connect(bob).claim()
             ).to.be.revertedWith("insufficient funds");
 
+            // mint more in two times
+            await poolTradedTokenERC20.mint(reward.address, available_after_2_years.mul(TWO));
 
-            let t = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
-
-            await poolTradedTokenERC20.mint(reward.address, t.mul(TWO));
+            const timestamp_latest = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const expected_latest = (
+                PRICE.mul(ratio).div(FRACTION).add( 
+                    (
+                        (BigNumber.from(timestamp_latest))
+                            .sub(timestamp_when_starting_calc_extraToken)
+                            .add(1)
+                            // plus 1 seconds need to get future block timestamp in chain
+                    ).mul(extraBonus) 
+                )
+            );
 
             const balanceBefore = await poolTradedTokenERC20.balanceOf(bob.address);
-
             await reward.connect(bob).claim();
-
             const balanceAfter = await poolTradedTokenERC20.balanceOf(bob.address);
 
-            console.log("bob balanceBefore= ", balanceBefore.toString());
-            console.log("bob balanceAfter = ", balanceAfter.toString());
-            console.log("bob t            = ", t.toString());
+            expect(expected_latest).to.be.eq(balanceAfter.sub(balanceBefore));
 
         });
 
