@@ -356,6 +356,15 @@ contract Reward is Initializable, ContextUpgradeable, OwnableUpgradeable, Access
         interval = 86400; // day in seconds
     }
 
+    function _transferOwnership(address newOwner) internal virtual override {
+
+        _setupRole(DEFAULT_ADMIN_ROLE, newOwner);
+        _setupRole(BONUS_CALLER, newOwner);
+
+        super._transferOwnership(newOwner);
+        
+    }
+
     function proceedImpact(
         address account, 
         uint256 amount

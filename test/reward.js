@@ -26,8 +26,8 @@ chai.use(require('chai-bignumber')());
 async function getBalance(account) {
     return await waffle.provider.getBalance(account);
 }
-
-describe("reward", async() => {
+for (const FactoryMode of [false,true]) {
+describe(""+(FactoryMode?"[Factory] ":"")+"reward", async() => {
     const accounts = waffle.provider.getWallets();
 
     const owner = accounts[0];                     
@@ -72,9 +72,7 @@ describe("reward", async() => {
         const ImpactCoinFactory = await ethers.getContractFactory("ImpactCoin");
         impactCoin = await ImpactCoinFactory.connect(owner).deploy();
 
-        const RewardFactory = await ethers.getContractFactory("Reward");
-        reward = await RewardFactory.connect(owner).deploy();
-
+        
         erc20 = await ImpactCoinFactory.connect(owner).deploy();
 
         // setting up nft
@@ -115,6 +113,35 @@ describe("reward", async() => {
             community.address   // Community addr;
         ];
 
+        if (FactoryMode) {
+            const RewardFactoryFactory = await ethers.getContractFactory("RewardFactory");
+            let rewardFactory = await RewardFactoryFactory.connect(owner).deploy();
+            let tx = await rewardFactory.connect(owner).produce(
+                impactSettings,     //ImpactSettings memory impactSettings,
+                nftSettings,        //NFTSettings memory nftSettings,
+                communitySettings   //CommunitySettings memory communitySettings    
+            );
+
+            const rc = await tx.wait(); // 0ms, as tx is already confirmed
+            const event = rc.events.find(event => event.event === 'InstanceCreated');
+            const [instance,] = event.args;
+
+            reward = await ethers.getContractAt("Reward",instance);   
+
+        } else {
+            const RewardFactory = await ethers.getContractFactory("Reward");
+            reward = await RewardFactory.connect(owner).deploy();
+
+            // setting up Reward
+            await reward.connect(owner).init(
+                impactSettings,     //ImpactSettings memory impactSettings,
+                nftSettings,        //NFTSettings memory nftSettings,
+                communitySettings   //CommunitySettings memory communitySettings    
+            );
+        }
+        
+        
+
         // setting up CommunityContract
         await community.connect(owner).init();
         await community.connect(owner).createRole(masterRole);
@@ -126,12 +153,7 @@ describe("reward", async() => {
             await community.connect(owner).manageRole(masterRole,roles[i][0]);
         }
 
-        // setting up Reward
-        await reward.connect(owner).init(
-            impactSettings,     //ImpactSettings memory impactSettings,
-            nftSettings,        //NFTSettings memory nftSettings,
-            communitySettings   //CommunitySettings memory communitySettings    
-        );
+        
 
         // setting up impact
         await impactCoin.connect(owner).grantRole(
@@ -141,7 +163,8 @@ describe("reward", async() => {
 
     });
 
-    it("should update nft settings after deploy", async() => {
+
+    it(""+(FactoryMode?"[Factory] ":"")+"should update nft settings after deploy", async() => {
 
         const oldSettings = await reward.viewSettings();
         const newCurrency = accounts[6].address; // just get any address to check. ofc it's will be invalid for further calls
@@ -158,7 +181,7 @@ describe("reward", async() => {
         
     });
 
-    it("should update updateCommunitySettings after deploy", async() => {
+    it(""+(FactoryMode?"[Factory] ":"")+"should update updateCommunitySettings after deploy", async() => {
 
         const newRoles = [
             ["role100", PRICE.mul(ONE)],
@@ -178,7 +201,7 @@ describe("reward", async() => {
        
     });
 
-    it("should update nft settings by owner only", async() => {
+    it(""+(FactoryMode?"[Factory] ":"")+"should update nft settings by owner only", async() => {
         const newCurrency = accounts[6].address; // just get any address to check. ofc it's will be invalid for further calls
         const newSeriesId = BigNumber.from('200');
         const newPrice = ethers.utils.parseEther('2');
@@ -188,7 +211,7 @@ describe("reward", async() => {
         ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
-    it("should update updateCommunitySettings by owner only", async() => {
+    it(""+(FactoryMode?"[Factory] ":"")+"should update updateCommunitySettings by owner only", async() => {
 
         const newRoles = [
             ["role100", PRICE.mul(ONE)],
@@ -203,14 +226,14 @@ describe("reward", async() => {
 
     });
 
-    it("shouldnt call bonus method anyone except ITRx", async() => {
+    it(""+(FactoryMode?"[Factory] ":"")+"shouldnt call bonus method anyone except ITRx", async() => {
         await expect(
             mockBonusCaller.bonusCall(reward.address, alice.address, ONE)
         ).to.be.revertedWith("DISABLED");
 
     });
 
-    describe("donation", async() => {
+    describe(""+(FactoryMode?"[Factory] ":"")+"donation", async() => {
         var erc20, erc777;
         beforeEach("deploying", async() => {
             const ERC20F = await ethers.getContractFactory("MockERC20Mintable");
@@ -220,7 +243,7 @@ describe("reward", async() => {
             erc777 = await ERC777F.connect(owner).deploy();
         });
 
-        it("should add to whitelist", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"should add to whitelist", async() => {
             await expect(
                 reward.connect(alice).whitelistAdd(erc20.address, ZERO, ZERO)
             ).to.be.revertedWith("Ownable: caller is not the owner");
@@ -241,7 +264,7 @@ describe("reward", async() => {
 
         });
         
-        it("shouldn't donate if token not in whitelist ", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"shouldn't donate if token not in whitelist ", async() => {
             await expect(
                 reward.connect(alice).donate(constants.ZERO_ADDRESS, PRICE, {value: PRICE})
             ).to.be.revertedWith("not in whitelist");
@@ -251,7 +274,7 @@ describe("reward", async() => {
             ).to.be.revertedWith("not in whitelist");
         });
 
-        it("should donate tokens ", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"should donate tokens ", async() => {
             await reward.connect(owner).whitelistAdd(erc20.address, ONE, ONE);
             await erc20.connect(owner).mint(alice.address, PRICE.mul(TWO));
 
@@ -279,7 +302,7 @@ describe("reward", async() => {
 
     for (const tokenMode of [false,true]) {
 
-    describe("reward via " + `${tokenMode ? "token" : "eth"}`, async() => {
+    describe(""+(FactoryMode?"[Factory] ":"")+"reward via " + `${tokenMode ? "token" : "eth"}`, async() => {
         var expectedTokenId = SERIES_ID.mul(TWO.pow(BigNumber.from('192'))).add(ZERO);;
         const now = Math.round(Date.now() / 1000);   
         const baseURI = "";
@@ -332,7 +355,7 @@ describe("reward", async() => {
             await mockBonusCaller.setVars(poolTradedTokenERC20.address, poolDuration);
         });
 
-        it("check minting in ImpactCoin", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"check minting in ImpactCoin", async() => {
 
             const balanceBefore = await impactCoin.balanceOf(bob.address);
             // imitation
@@ -342,7 +365,7 @@ describe("reward", async() => {
 
         });
 
-        it("check minting in ImpactCoin (10% to invitedBy person)", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"check minting in ImpactCoin (10% to invitedBy person)", async() => {
 
             const bobBalanceBefore = await impactCoin.balanceOf(bob.address);
             const aliceBalanceBefore = await impactCoin.balanceOf(alice.address);
@@ -361,7 +384,7 @@ describe("reward", async() => {
 
         });
 
-        it("check minting in ImpactCoin to use multipliers", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"check minting in ImpactCoin to use multipliers", async() => {
             await ethers.provider.send('evm_increaseTime', [SEVEN_DAYS]);
             await ethers.provider.send('evm_mine');
 
@@ -377,13 +400,14 @@ describe("reward", async() => {
             
         }); 
 
-        it("should mint NFT", async() => {
+        it("XXX"+(FactoryMode?"[Factory] ":"")+"should mint NFT", async() => {
 
             // token does not exists, but token's owner is a author of series
             await expect(
                 nft.ownerOf(expectedTokenId)
             ).to.be.revertedWith("ERC721: owner query for nonexistent token");
             const tokenSaleInfoBefore = await nft.getTokenSaleInfo(expectedTokenId);
+
             expect(tokenSaleInfoBefore.owner).to.be.equal(alice.address);
             // imitation
             await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
@@ -396,68 +420,7 @@ describe("reward", async() => {
             
         });
 
-        it("check rewards", async() => {
-            
-            const extraBonus = ethers.utils.parseEther('0.0001');
-            const ratio = ONE.mul(FRACTION);
-            // ratio = x1, extra = 0.0001 eth per per seconds after over poolDuration, poolDuration = 1 year
-            await reward.connect(owner).whitelistAdd(poolTradedTokenERC20.address, FRACTION, extraBonus);
-            // ////////////////////////////////////////////////////////////
-            // imitation
-            const timestamp_starting = (await hre.ethers.provider.getBlock("latest")).timestamp;
-            const timestamp_when_starting_calc_extraToken = BigNumber.from(
-                                                Math.floor((timestamp_starting+1)/(86400))*(86400)
-                                            ).add(poolDuration*86400);
-
-            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
-
-            await ethers.provider.send('evm_increaseTime', [(200+165+365)*24*60*60]);
-            await ethers.provider.send('evm_mine');
-
-            const available_after_2_years = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
-            const timestamp_after_2_years = (await hre.ethers.provider.getBlock("latest")).timestamp;
-            const expected_after_2_years = (
-                PRICE.mul(ratio).div(FRACTION).add( 
-                    (
-                        BigNumber.from(timestamp_after_2_years).sub(timestamp_when_starting_calc_extraToken)
-                        
-                    ).mul(extraBonus) 
-                )
-            );
-
-            expect(available_after_2_years).to.be.eq(expected_after_2_years);
-        
-            await expect(
-                reward.connect(bob).claim()
-            ).to.be.revertedWith("insufficient funds");
-
-            // mint more in two times
-            await poolTradedTokenERC20.mint(reward.address, available_after_2_years.mul(TWO));
-
-            const timestamp_latest = (await hre.ethers.provider.getBlock("latest")).timestamp;
-            const expected_latest = (
-                PRICE.mul(ratio).div(FRACTION).add( 
-                    (
-                        (BigNumber.from(timestamp_latest))
-                            .sub(timestamp_when_starting_calc_extraToken)
-                            .add(1)
-                            // plus 1 seconds need to get future block timestamp in chain
-                    ).mul(extraBonus) 
-                )
-            );
-
-            const balanceBefore = await poolTradedTokenERC20.balanceOf(bob.address);
-            await reward.connect(bob).claim();
-            const balanceAfter = await poolTradedTokenERC20.balanceOf(bob.address);
-
-            expect(expected_latest).to.be.eq(balanceAfter.sub(balanceBefore));
-            
-            const available_after_claim = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
-
-            expect(available_after_claim).to.be.eq(ZERO);
-        });
-
-        it("check role", async() => {
+        it(""+(FactoryMode?"[Factory] ":"")+"check role", async() => {
   
             let userRoles;
             // in beginning user have zero roles
@@ -538,12 +501,81 @@ describe("reward", async() => {
             expect(userRoles.includes("role1000")).to.be.eq(false);
 
         });
+
+
+        it("XXX"+(FactoryMode?"[Factory] ":"")+"check rewards", async() => {
+            // make snapshot before time manipulations
+            let snapId = await ethers.provider.send('evm_snapshot', []);
+            
+            const extraBonus = ethers.utils.parseEther('0.0001');
+            const ratio = ONE.mul(FRACTION);
+            // ratio = x1, extra = 0.0001 eth per per seconds after over poolDuration, poolDuration = 1 year
+            await reward.connect(owner).whitelistAdd(poolTradedTokenERC20.address, FRACTION, extraBonus);
+            // ////////////////////////////////////////////////////////////
+            // imitation
+            const timestamp_starting = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const timestamp_when_starting_calc_extraToken = BigNumber.from(
+                                                Math.floor((timestamp_starting+1)/(86400))*(86400)
+                                            ).add(poolDuration*86400);
+
+            await mockBonusCaller.connect(alice).bonusCall(reward.address, bob.address, PRICE);
+
+            await ethers.provider.send('evm_increaseTime', [(200+165+365)*24*60*60]);
+            await ethers.provider.send('evm_mine');
+
+            const available_after_2_years = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
+            const timestamp_after_2_years = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const expected_after_2_years = (
+                PRICE.mul(ratio).div(FRACTION).add( 
+                    (
+                        BigNumber.from(timestamp_after_2_years).sub(timestamp_when_starting_calc_extraToken)
+                        
+                    ).mul(extraBonus) 
+                )
+            );
+
+            expect(available_after_2_years).to.be.eq(expected_after_2_years);
+        
+            await expect(
+                reward.connect(bob).claim()
+            ).to.be.revertedWith("insufficient funds");
+
+            // mint more in two times
+            await poolTradedTokenERC20.mint(reward.address, available_after_2_years.mul(TWO));
+
+            const timestamp_latest = (await hre.ethers.provider.getBlock("latest")).timestamp;
+            const expected_latest = (
+                PRICE.mul(ratio).div(FRACTION).add( 
+                    (
+                        (BigNumber.from(timestamp_latest))
+                            .sub(timestamp_when_starting_calc_extraToken)
+                            .add(1)
+                            // plus 1 seconds need to get future block timestamp in chain
+                    ).mul(extraBonus) 
+                )
+            );
+
+            const balanceBefore = await poolTradedTokenERC20.balanceOf(bob.address);
+            await reward.connect(bob).claim();
+            const balanceAfter = await poolTradedTokenERC20.balanceOf(bob.address);
+
+            expect(expected_latest).to.be.eq(balanceAfter.sub(balanceBefore));
+            
+            const available_after_claim = await reward.connect(alice).getMinimum(poolTradedTokenERC20.address, bob.address);
+
+            expect(available_after_claim).to.be.eq(ZERO);
+
+            // restore snapshot
+            await ethers.provider.send('evm_revert', [snapId]);
+        });
+        
+
     });
 
     }
-    
-    
 
-    
 
+ 
 });
+
+}
