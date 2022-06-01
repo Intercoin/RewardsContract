@@ -1,9 +1,10 @@
 {
   "hardhat": {
     "time_created": 1652092040554,
-    "time_updated": 1652102424971,
+    "time_updated": 1654082915221,
     "community": "0x90118d110B07ABB82Ba8980D1c5cC96EeA810d2C",
-    "communityerc721": "0xcA03Dc4665A8C3603cb4Fd5Ce71Af9649dC00d44"
+    "communityerc721": "0xcA03Dc4665A8C3603cb4Fd5Ce71Af9649dC00d44",
+    "nft": "0x2dE080e97B0caE9825375D31f5D0eD5751fDf16D"
   },
-  "time_updated": 1652102424971
+  "time_updated": 1654082915221
 }

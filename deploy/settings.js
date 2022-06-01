@@ -29,8 +29,10 @@ module.exports = {
 
             ]
         },
+        implemenation:true
 
     },
+    
     communitycontract:{},
     name: "FantomTest Mock Token",
     symbol: "FMT",

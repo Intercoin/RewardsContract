@@ -8,11 +8,11 @@ async function main() {
     const deploy_settings = require('../deploy/settings.js');
     const deploy_implementations = require('../deploy/implementations.js');
 
-	const [,deployer] = await ethers.getSigners();
+	  const [,deployer] = await ethers.getSigners();
 
 
 
-	console.log("Deploying contracts with the account:",deployer.address);
+	  console.log("Deploying contracts with the account:",deployer.address);
     console.log("Account balance:", (await balance.current(deployer.address)).toString());
     
     console.log("Deploying implementation");

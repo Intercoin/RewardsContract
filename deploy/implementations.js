@@ -45,8 +45,14 @@ module.exports = async(rebuildImplementation) => {
     let tmp;
     const [,deployer] = await ethers.getSigners();
 
+    var options = {
+		//gasPrice: ethers.utils.parseUnits('50', 'gwei'), 
+		gasLimit: 10e6
+	};
     const CommunityF = await ethers.getContractFactory("Community");
     const CommunityERC721F = await ethers.getContractFactory("CommunityERC721");
+    const NFTF = await ethers.getContractFactory("NFT");
+    const ImpactCoinF = await ethers.getContractFactory("ImpactCoin");
 
     // if (useImplementationCache) {
     //     if (typeof data_object.community === 'undefined') {
@@ -58,20 +64,41 @@ module.exports = async(rebuildImplementation) => {
     //     data_object.community = tmp.address;
     // }
 
+    //community
     data_object.community = 
-        (useImplementationCache && (typeof data_object.community === 'undefined')) || (!useImplementationCache)
+        (rebuildImplementation) || (typeof data_object.community === 'undefined')
         ?
         (await CommunityF.connect(deployer).deploy()).address
         :
         data_object.community
         ;
     data_object.communityerc721 = 
-        (useImplementationCache && (typeof data_object.communityerc721 === 'undefined')) || (!useImplementationCache)
+        (rebuildImplementation) || (typeof data_object.communityerc721 === 'undefined')
         ?
         (await CommunityERC721F.connect(deployer).deploy()).address
         :
         data_object.communityerc721
         ;
+
+    //nft
+    data_object.nft = 
+        (rebuildImplementation) || (typeof data_object.nft === 'undefined')
+        ?
+        (await NFTF.connect(deployer).deploy(options)).address
+        :
+        data_object.nft
+        ;
+
+    //impactCoin
+    data_object.impact = 
+        (rebuildImplementation) || (typeof data_object.impact === 'undefined')
+        ?
+        (await ImpactCoinF.connect(deployer).deploy()).address
+        :
+        data_object.impact
+        ;
+
+
 
         //     address communityImpl,
         // address communityerc721Impl
